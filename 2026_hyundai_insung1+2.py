@@ -94,7 +94,7 @@ if "stage" not in st.session_state:
 if "p1_likert" not in st.session_state:
     st.session_state.p1_likert = {}
 if "p1_forced" not in st.session_state:
-    st.session_state.p1_forced = {}
+    st.session_state.p1_forced = {v_id: {"가깝다": None, "멀다": None} for v_id in range(1, 53)}
 if "p2_ans" not in st.session_state:
     st.session_state.p2_ans = {}
 if "p1_page" not in st.session_state:
@@ -130,7 +130,7 @@ if st.session_state.stage == "INTRO":
     
     ### ⚙️ 시스템 동작 규칙
     1. **문항 완전 무작위 배치 (Shuffling)**: 문항 순서가 완전히 뒤섞여 출제되므로 직전 답변에 의존해 끼워 맞추는 거짓 응답이 통하지 않습니다.
-    2. **6점 척도 및 체크박스 검증**: 파트 1 질문에 대해 1~6점 마킹 및 세트 내 가깝다/멀다를 직접 체크합니다.
+    2. **가깝다/멀다 깔끔한 선택지**: 복잡한 안내 문구 없이 깔끔하게 [가깝다]와 [멀다] 전용 체크 박스로 모의 테스트가 진행됩니다.
     3. **정규분포 환산형 점수제**: 가상의 합격자 집단 분포 곡선과 비교하여 내 최종 위치를 상대점수로 도출합니다.
     """)
     if st.button("🚀 실전 셔플링 테스트 시작", type="primary"):
@@ -142,7 +142,7 @@ if st.session_state.stage == "INTRO":
 # ------------------------------------------------------------------
 elif st.session_state.stage == "PART1":
     st.header("📋 파트 1: 셔플링 강제선택형 검사 (155문항 / 총 52세트)")
-    st.caption("6개 선택지 중 하나를 고르고, 세트 내에서 나에게 가장 가깝다(1개)와 멀다(1개)의 체크박스를 완성하세요.")
+    st.caption("6개 선택지 중 하나를 고르고, 우측 체크박스에서 해당 문항이 나에게 '가깝다' 또는 '멀다' 인지 고르세요. (세트당 가깝다 1개, 멀다 1개 필수)")
     
     shuffled_sets = st.session_state.p1_shuffled_sets
     total_sets_count = len(shuffled_sets)
@@ -162,9 +162,10 @@ elif st.session_state.stage == "PART1":
         st.markdown(f"#### 📦 무작위 세트 {virtual_set_id}")
         set_items = shuffled_sets[s_idx]
         
-        if virtual_set_id not in st.session_state.p1_forced:
-            st.session_state.p1_forced[virtual_set_id] = {"가깝다": None, "멀다": None}
-            
+        # 이미 임시 저장된 기억이 있는지 확인하여 기본값 복원
+        saved_near_id = st.session_state.p1_forced[virtual_set_id]["가깝다"]
+        saved_far_id = st.session_state.p1_forced[virtual_set_id]["멀다"]
+        
         for item in set_items:
             i_id = item["item_id"]
             col_text, col_likert, col_near, col_far = st.columns([4, 4, 1, 1])
@@ -173,42 +174,97 @@ elif st.session_state.stage == "PART1":
                 st.write(f"• {item['text']} (Ref: P1-{i_id})")
                 
             with col_likert:
-                st.session_state.p1_likert[i_id] = st.radio(
-                    f"L1_{i_id}", [1, 2, 3, 4, 5, 6], index=3, horizontal=True, key=f"likert1_{i_id}", label_visibility="collapsed"
+                if f"likert_val_{i_id}" not in st.session_state:
+                    st.session_state[f"likert_val_{i_id}"] = 4
+                st.session_state[f"likert_val_{i_id}"] = st.radio(
+                    f"L1_{i_id}", [1, 2, 3, 4, 5, 6], 
+                    index=st.session_state[f"likert_val_{i_id}"] - 1, 
+                    horizontal=True, key=f"likert_widget_{i_id}", label_visibility="collapsed"
                 )
                 
+            # 🎯 [요청 반영 및 버그 해결]: 오직 가깝다 / 멀다만 노출되도록 체크박스로 복귀
+            # 실시간 강제 새로고침(rerun)을 빼서 클릭 렉과 버튼 씹힘 현상을 완벽히 방지했습니다.
             with col_near:
-                is_near = st.checkbox("가깝다", key=f"near_{i_id}", value=(st.session_state.p1_forced[virtual_set_id]["가깝다"] == i_id))
-                if is_near and st.session_state.p1_forced[virtual_set_id]["가깝다"] != i_id:
-                    st.session_state.p1_forced[virtual_set_id]["가깝다"] = i_id
-                    st.rerun()
-                elif not is_near and st.session_state.p1_forced[virtual_set_id]["가깝다"] == i_id:
-                    st.session_state.p1_forced[virtual_set_id]["가깝다"] = None
+                st.checkbox("가깝다", key=f"near_check_{i_id}", value=(saved_near_id == i_id))
                     
             with col_far:
-                is_far = st.checkbox("멀다", key=f"far_{i_id}", value=(st.session_state.p1_forced[virtual_set_id]["멀다"] == i_id))
-                if is_far and st.session_state.p1_forced[virtual_set_id]["멀다"] != i_id:
-                    st.session_state.p1_forced[virtual_set_id]["멀다"] = i_id
-                    st.rerun()
-                elif not is_far and st.session_state.p1_forced[virtual_set_id]["멀다"] == i_id:
-                    st.session_state.p1_forced[virtual_set_id]["멀다"] = None
+                st.checkbox("멀다", key=f"far_check_{i_id}", value=(saved_far_id == i_id))
         st.write("---")
         
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         if current_p1_page > 0:
             if st.button("이전 페이지"):
+                # 이전 페이지로 이동할 때 현재 선택값 임시 보존
+                for check_idx in range(start_set_idx, end_set_idx):
+                    v_id = check_idx + 1
+                    items_in_set = shuffled_sets[check_idx]
+                    n_id = next((it["item_id"] for it in items_in_set if st.session_state.get(f"near_check_{it['item_id']}", False)), None)
+                    f_id = next((it["item_id"] for it in items_in_set if st.session_state.get(f"far_check_{it['item_id']}", False)), None)
+                    st.session_state.p1_forced[v_id] = {"가깝다": n_id, "멀다": f_id}
                 st.session_state.p1_page -= 1
                 st.rerun()
+                
     with col_btn2:
+        # [다음 페이지] 또는 [파트2 이동] 버튼을 누를 때 컴퓨터가 한 번에 정밀 검증을 수행합니다.
         if current_p1_page < max_p1_pages - 1:
             if st.button("다음 페이지"):
-                st.session_state.p1_page += 1
-                st.rerun()
+                has_error = False
+                for check_idx in range(start_set_idx, end_set_idx):
+                    v_set_id = check_idx + 1
+                    items_in_set = shuffled_sets[check_idx]
+                    
+                    n_checked = [it["item_id"] for it in items_in_set if st.session_state.get(f"near_check_{it['item_id']}", False)]
+                    f_checked = [it["item_id"] for it in items_in_set if st.session_state.get(f"far_check_{it['item_id']}", False)]
+                    
+                    # 중복 오류 검증
+                    double_check = set(n_checked) & set(f_checked)
+                    if double_check:
+                        st.error(f"⚠️ 무작위 세트 {v_set_id}번의 한 문항에 '가깝다'와 '멀다'를 동시에 체크할 수 없습니다.")
+                        has_error = True
+                        continue
+                        
+                    if len(n_checked) != 1 or len(f_checked) != 1:
+                        st.error(f"⚠️ 무작위 세트 {v_set_id}번은 반드시 '가깝다' 1개와 '멀다' 1개를 지정해야 합니다.")
+                        has_error = True
+                    else:
+                        st.session_state.p1_forced[v_set_id] = {"가깝다": n_checked[0], "멀다": f_checked[0]}
+                
+                if not has_error:
+                    st.session_state.p1_page += 1
+                    st.rerun()
         else:
             if st.button("🏁 파트 1 완료 후 셔플 파트 2 진입", type="primary"):
-                st.session_state.stage = "PART2"
-                st.rerun()
+                has_error = False
+                for check_idx in range(start_set_idx, end_set_idx):
+                    v_set_id = check_idx + 1
+                    items_in_set = shuffled_sets[check_idx]
+                    
+                    n_checked = [it["item_id"] for it in items_in_set if st.session_state.get(f"near_check_{it['item_id']}", False)]
+                    f_checked = [it["item_id"] for it in items_in_set if st.session_state.get(f"far_check_{it['item_id']}", False)]
+                    
+                    double_check = set(n_checked) & set(f_checked)
+                    if double_check:
+                        st.error(f"⚠️ 무작위 세트 {v_set_id}번의 한 문항에 '가깝다'와 '멀다'를 동시에 체크할 수 없습니다.")
+                        has_error = True
+                        continue
+                        
+                    if len(n_checked) != 1 or len(f_checked) != 1:
+                        st.error(f"⚠️ 무작위 세트 {v_set_id}번은 반드시 '가깝다' 1개와 '멀다' 1개를 지정해야 합니다.")
+                        has_error = True
+                    else:
+                        st.session_state.p1_forced[v_set_id] = {"가깝다": n_checked[0], "멀다": f_checked[0]}
+                        
+                if not has_error:
+                    # 최종 전수 취합 처리
+                    for s_flat_idx, s_flat_items in enumerate(shuffled_sets):
+                        fid = s_flat_idx + 1
+                        n_id = next((it["item_id"] for it in s_flat_items if st.session_state.get(f"near_check_{it['item_id']}", False)), None)
+                        f_id = next((it["item_id"] for it in s_flat_items if st.session_state.get(f"far_check_{it['item_id']}", False)), None)
+                        st.session_state.p1_forced[fid] = {"가깝다": n_id, "멀다": f_id}
+                        
+                    st.session_state.stage = "PART2"
+                    st.rerun()
 
 # ------------------------------------------------------------------
 # [화면 구성 - PART 2]
@@ -233,8 +289,14 @@ elif st.session_state.stage == "PART2":
         i_id = item["item_id"]
         
         st.markdown(f"**[셔플 문항] {item['text']}** (Ref: P2-{i_id})")
-        st.session_state.p2_ans[i_id] = st.radio(
-            f"L2_{i_id}", [1, 2, 3, 4, 5], index=2, horizontal=True, key=f"likert2_{i_id}",
+        
+        if f"p2_val_{i_id}" not in st.session_state:
+            st.session_state[f"p2_val_{i_id}"] = 3
+            
+        st.session_state[f"p2_val_{i_id}"] = st.radio(
+            f"L2_{i_id}", [1, 2, 3, 4, 5], 
+            index=st.session_state[f"p2_val_{i_id}"] - 1, 
+            horizontal=True, key=f"p2_widget_{i_id}",
             format_func=lambda x: {1:"전혀 아니다", 2:"아니다", 3:"보통이다", 4:"그렇다", 5:"매우 그렇다"}[x]
         )
         st.write("---")
@@ -264,7 +326,7 @@ else:
     
     p2_shuffled = st.session_state.p2_shuffled_items
     p2_df = pd.DataFrame(p2_shuffled)
-    p2_df["user_ans"] = p2_df["item_id"].map(st.session_state.p2_ans).fillna(3)
+    p2_df["user_ans"] = p2_df["item_id"].map(lambda x: st.session_state.get(f"p2_val_{x}", 3))
     p2_df["weighted_score"] = p2_df["user_ans"] * p2_df["weight"]
     
     norm_params = {
@@ -347,12 +409,10 @@ else:
         })
     df_chart = pd.DataFrame(chart_rows)
     
-    # 🎯 [수정 완료] 오타 유발 매개변수를 barmode="group"으로 완전히 정상화했습니다.
     fig = px.bar(
         df_chart, x="Hyundai Way 핵심 가치", y=["나의 변환 점수", "현대차 규준 그룹 기준선"],
-        barmode="group",
-        labels={"value": "모집단 대비 상대 스코어 (T-Score)", "variable": "구분"},
     )
+    fig.update_layout(barmode="group")
     st.plotly_chart(fig, use_container_width=True)
     
     st.write("---")
