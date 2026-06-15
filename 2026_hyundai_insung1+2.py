@@ -347,13 +347,12 @@ else:
         })
     df_chart = pd.DataFrame(chart_rows)
     
+    # 🎯 [수정 완료] 오타 유발 매개변수를 barmode="group"으로 완전히 정상화했습니다.
     fig = px.bar(
         df_chart, x="Hyundai Way 핵심 가치", y=["나의 변환 점수", "현대차 규준 그룹 기준선"],
-        bgroupmode="group" if "bgroupmode" in dir(px) else "group", # barmode="group" 안전성 확보용 세팅
+        barmode="group",
         labels={"value": "모집단 대비 상대 스코어 (T-Score)", "variable": "구분"},
     )
-    # 확실하게 barmode 명시적 업데이트 적용하여 오타 에러 완벽 차단
-    fig.update_layout(barmode="group")
     st.plotly_chart(fig, use_container_width=True)
     
     st.write("---")
