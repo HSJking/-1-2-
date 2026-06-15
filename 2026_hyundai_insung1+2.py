@@ -7,7 +7,7 @@ import random
 # 페이지 기본 설정
 st.set_page_config(page_title="현대자동차 10대 Hyundai Way 통합 인성검사 PRO", layout="wide")
 
-# 10가지 현대자동차 인재상 지표 (Hyundai Way)
+# 현대자동차 인재상 지표 (Hyundai Way)
 HYUNDAI_WAY = {
     1: "최고 수준의 안전과 품질",
     2: "집요함",
@@ -87,26 +87,16 @@ def get_master_part2():
     return data
 
 # ------------------------------------------------------------------
-# 🎯 [버그 해결 핵심] 실시간 체크박스 중복 해제 콜백 시스템
+# 🎯 [수정 완료] 오직 동일한 문항(가로 한 줄) 내에서만 상호 배제 처리
 # ------------------------------------------------------------------
-def on_near_click(item_id, all_ids):
-    # 내가 '가깝다'를 체크했다면
+def on_near_click(item_id):
     if st.session_state[f"near_check_{item_id}"]:
-        # 1. 같은 세트 내의 다른 가깝다 체크박스들을 전부 강제로 끈다
-        for oid in all_ids:
-            if oid != item_id:
-                st.session_state[f"near_check_{oid}"] = False
-        # 2. 같은 문항의 '멀다' 체크박스도 모순되므로 자동으로 끈다
+        # 내가 가깝다를 누르면 동일한 줄의 '멀다'만 해제 (위아래 줄은 터치 안 함)
         st.session_state[f"far_check_{item_id}"] = False
 
-def on_far_click(item_id, all_ids):
-    # 내가 '멀다'를 체크했다면
+def on_far_click(item_id):
     if st.session_state[f"far_check_{item_id}"]:
-        # 1. 같은 세트 내의 다른 멀다 체크박스들을 전부 강제로 끈다
-        for oid in all_ids:
-            if oid != item_id:
-                st.session_state[f"far_check_{oid}"] = False
-        # 2. 같은 문항의 '가깝다' 체크박스도 모순되므로 자동으로 끈다
+        # 내가 멀다를 누르면 동일한 줄의 '가깝다'만 해제
         st.session_state[f"near_check_{item_id}"] = False
 
 # ------------------------------------------------------------------
@@ -137,7 +127,6 @@ if "p1_shuffled_sets" not in st.session_state:
         shuffled_sets.append(p1_master_shuffled[i:i+chunk_size])
     st.session_state.p1_shuffled_sets = shuffled_sets
 
-# 🧠 모든 체크박스의 메모리 상태 공간을 사전에 완전 독립 선언 (누수 방지)
 for item in p1_master:
     k_near = f"near_check_{item['item_id']}"
     k_far = f"far_check_{item['item_id']}"
@@ -163,7 +152,7 @@ if st.session_state.stage == "INTRO":
     
     ### ⚙️ 시스템 동작 규칙
     1. **문항 완전 무작위 배치 (Shuffling)**: 문항 순서가 완전히 뒤섞여 출제되므로 직전 답변에 의존해 끼워 맞추는 거짓 응답이 통하지 않습니다.
-    2. **가깝다/멀다 자동 단일화**: 한 세트 내에서 [가깝다]나 [멀다]를 누르면 이미 체크되어 있던 다른 항목이 자동으로 꺼지며 중복 마킹을 완전 방지합니다.
+    2. **가로형 중복 배제 시스템**: 동일한 문항 줄 내에서 [가깝다]와 [멀다]가 중복 선택되지 않도록 가로 제어가 동작합니다.
     3. **정규분포 환산형 점수제**: 가상의 합격자 집단 분포 곡선과 비교하여 내 최종 위치를 상대점수로 도출합니다.
     """)
     if st.button("🚀 실전 셔플링 테스트 시작", type="primary"):
@@ -194,7 +183,6 @@ elif st.session_state.stage == "PART1":
         virtual_set_id = s_idx + 1
         st.markdown(f"#### 📦 무작위 세트 {virtual_set_id}")
         set_items = shuffled_sets[s_idx]
-        all_ids = [item["item_id"] for item in set_items]
         
         for item in set_items:
             i_id = item["item_id"]
@@ -212,12 +200,12 @@ elif st.session_state.stage == "PART1":
                     horizontal=True, key=f"likert_widget_{i_id}", label_visibility="collapsed"
                 )
                 
-            # 🎯 콜백 바인딩을 통해 중복 마킹을 클릭 순간 실시간 제어 처리
+            # 가로 배제 전용 인수(args) 적용 바인딩
             with col_near:
-                st.checkbox("가깝다", key=f"near_check_{i_id}", on_change=on_near_click, args=(i_id, all_ids))
+                st.checkbox("가깝다", key=f"near_check_{i_id}", on_change=on_near_click, args=(i_id,))
                     
             with col_far:
-                st.checkbox("멀다", key=f"far_check_{i_id}", on_change=on_far_click, args=(i_id, all_ids))
+                st.checkbox("멀다", key=f"far_check_{i_id}", on_change=on_far_click, args=(i_id,))
         st.write("---")
         
     col_btn1, col_btn2 = st.columns(2)
@@ -264,7 +252,6 @@ elif st.session_state.stage == "PART1":
                         st.session_state.p1_forced[v_set_id] = {"가깝다": n_checked[0], "멀다": f_checked[0]}
                         
                 if not has_error:
-                    # 전수 취합 데이터 세션 덤프 확정
                     for s_flat_idx, s_flat_items in enumerate(shuffled_sets):
                         fid = s_flat_idx + 1
                         n_id = next((it["item_id"] for it in s_flat_items if st.session_state[f"near_check_{it['item_id']}"]), None)
