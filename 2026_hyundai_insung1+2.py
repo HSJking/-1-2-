@@ -7,7 +7,7 @@ import random
 # 페이지 기본 설정
 st.set_page_config(page_title="현대자동차 10대 Hyundai Way 통합 인성검사 PRO", layout="wide")
 
-# 🎯 [오타 수정 완료] 민찮한 -> 민첩한 실행으로 완벽하게 고쳤습니다!
+# 10가지 현대자동차 인재상 지표 (Hyundai Way)
 HYUNDAI_WAY = {
     1: "최고 수준의 안전과 품질",
     2: "집요함",
@@ -142,4 +142,77 @@ if st.session_state.stage == "INTRO":
 # ------------------------------------------------------------------
 elif st.session_state.stage == "PART1":
     st.header("📋 파트 1: 셔플링 강제선택형 검사 (155문항 / 총 52세트)")
-    st.caption("6
+    st.caption("6개 선택지 중 하나를 고르고, 세트 내에서 나에게 가장 가깝다(1개)와 멀다(1개)의 체크박스를 완성하세요.")
+    
+    shuffled_sets = st.session_state.p1_shuffled_sets
+    total_sets_count = len(shuffled_sets)
+    
+    SETS_PER_PAGE = 5
+    max_p1_pages = int(np.ceil(total_sets_count / SETS_PER_PAGE))
+    current_p1_page = st.session_state.p1_page
+    
+    start_set_idx = current_p1_page * SETS_PER_PAGE
+    end_set_idx = min(total_sets_count, start_set_idx + SETS_PER_PAGE)
+    
+    st.progress(end_set_idx / total_sets_count)
+    st.write(f"**현재 페이지: {current_p1_page + 1} / {max_p1_pages}**")
+    
+    for s_idx in range(start_set_idx, end_set_idx):
+        virtual_set_id = s_idx + 1
+        st.markdown(f"#### 📦 무작위 세트 {virtual_set_id}")
+        set_items = shuffled_sets[s_idx]
+        
+        if virtual_set_id not in st.session_state.p1_forced:
+            st.session_state.p1_forced[virtual_set_id] = {"가깝다": None, "멀다": None}
+            
+        for item in set_items:
+            i_id = item["item_id"]
+            col_text, col_likert, col_near, col_far = st.columns([4, 4, 1, 1])
+            
+            with col_text:
+                st.write(f"• {item['text']} (Ref: P1-{i_id})")
+                
+            with col_likert:
+                st.session_state.p1_likert[i_id] = st.radio(
+                    f"L1_{i_id}", [1, 2, 3, 4, 5, 6], index=3, horizontal=True, key=f"likert1_{i_id}", label_visibility="collapsed"
+                )
+                
+            with col_near:
+                is_near = st.checkbox("가깝다", key=f"near_{i_id}", value=(st.session_state.p1_forced[virtual_set_id]["가깝다"] == i_id))
+                if is_near and st.session_state.p1_forced[virtual_set_id]["가깝다"] != i_id:
+                    st.session_state.p1_forced[virtual_set_id]["가깝다"] = i_id
+                    st.rerun()
+                elif not is_near and st.session_state.p1_forced[virtual_set_id]["가깝다"] == i_id:
+                    st.session_state.p1_forced[virtual_set_id]["가깝다"] = None
+                    
+            with col_far:
+                is_far = st.checkbox("멀다", key=f"far_{i_id}", value=(st.session_state.p1_forced[virtual_set_id]["멀다"] == i_id))
+                if is_far and st.session_state.p1_forced[virtual_set_id]["멀다"] != i_id:
+                    st.session_state.p1_forced[virtual_set_id]["멀다"] = i_id
+                    st.rerun()
+                elif not is_far and st.session_state.p1_forced[virtual_set_id]["멀다"] == i_id:
+                    st.session_state.p1_forced[virtual_set_id]["멀다"] = None
+        st.write("---")
+        
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if current_p1_page > 0:
+            if st.button("이전 페이지"):
+                st.session_state.p1_page -= 1
+                st.rerun()
+    with col_btn2:
+        if current_p1_page < max_p1_pages - 1:
+            if st.button("다음 페이지"):
+                st.session_state.p1_page += 1
+                st.rerun()
+        else:
+            if st.button("🏁 파트 1 완료 후 셔플 파트 2 진입", type="primary"):
+                st.session_state.stage = "PART2"
+                st.rerun()
+
+# ------------------------------------------------------------------
+# [화면 구성 - PART 2]
+# ------------------------------------------------------------------
+elif st.session_state.stage == "PART2":
+    st.header("📋 파트 2: 단일 지표 무작위 셔플 검사 (300문항)")
+    st.caption("완벽하게 섞인 300개의
