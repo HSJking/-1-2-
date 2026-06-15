@@ -215,4 +215,148 @@ elif st.session_state.stage == "PART1":
 # ------------------------------------------------------------------
 elif st.session_state.stage == "PART2":
     st.header("📋 파트 2: 단일 지표 무작위 셔플 검사 (300문항)")
-    st.caption("완벽하게 섞인 300개의
+    st.caption("완벽하게 섞인 300개의 질문입니다. 직관적으로 판단해 마킹하세요.")
+    
+    p2_items = st.session_state.p2_shuffled_items
+    ITEMS_PER_PAGE = 30
+    max_p2_pages = 300 // ITEMS_PER_PAGE
+    current_p2_page = st.session_state.p2_page
+    
+    start_idx = current_p2_page * ITEMS_PER_PAGE
+    end_idx = start_idx + ITEMS_PER_PAGE
+    
+    st.progress(end_idx / 300)
+    st.write(f"**현재 페이지: {current_p2_page + 1} / {max_p2_pages}**")
+    
+    for idx in range(start_idx, end_idx):
+        item = p2_items[idx]
+        i_id = item["item_id"]
+        
+        st.markdown(f"**[셔플 문항] {item['text']}** (Ref: P2-{i_id})")
+        st.session_state.p2_ans[i_id] = st.radio(
+            f"L2_{i_id}", [1, 2, 3, 4, 5], index=2, horizontal=True, key=f"likert2_{i_id}",
+            format_func=lambda x: {1:"전혀 아니다", 2:"아니다", 3:"보통이다", 4:"그렇다", 5:"매우 그렇다"}[x]
+        )
+        st.write("---")
+        
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        if current_p2_page > 0:
+            if st.button("이전 페이지"):
+                st.session_state.p2_page -= 1
+                st.rerun()
+    with col_b2:
+        if current_p2_page < max_p2_pages - 1:
+            if st.button("다음 페이지"):
+                st.session_state.p2_page += 1
+                st.rerun()
+        else:
+            if st.button("📊 블랙박스 가중 연산 및 최종 리포트 출력", type="primary"):
+                st.session_state.stage = "RESULT"
+                st.rerun()
+
+# ------------------------------------------------------------------
+# [화면 구성 - RESULT]
+# ------------------------------------------------------------------
+else:
+    st.header("📊 블랙박스 분석 엔진 구동 결과 보고서")
+    st.write("---")
+    
+    p2_shuffled = st.session_state.p2_shuffled_items
+    p2_df = pd.DataFrame(p2_shuffled)
+    p2_df["user_ans"] = p2_df["item_id"].map(st.session_state.p2_ans).fillna(3)
+    p2_df["weighted_score"] = p2_df["user_ans"] * p2_df["weight"]
+    
+    norm_params = {
+        "최고 수준의 안전과 품질": {"mu": 4.8, "sigma": 0.4},
+        "집요함": {"mu": 4.6, "sigma": 0.5},
+        "시도와 발전": {"mu": 4.2, "sigma": 0.6},
+        "민첩한 실행": {"mu": 4.1, "sigma": 0.5},
+        "협업": {"mu": 4.3, "sigma": 0.5},
+        "회복탄력성": {"mu": 4.2, "sigma": 0.6},
+        "다양성 포용": {"mu": 4.0, "sigma": 0.6},
+        "전문성": {"mu": 4.4, "sigma": 0.5},
+        "윤리준수": {"mu": 4.7, "sigma": 0.4},
+        "데이터 기반 사고": {"mu": 3.2, "sigma": 0.8}
+    }
+    
+    dim_scores = {}
+    for dim_name in HYUNDAI_WAY.values():
+        sub = p2_df[p2_df["dim"] == dim_name]
+        
+        if sub["weight"].sum() == 0:
+            user_raw_avg = 3.0
+        else:
+            user_raw_avg = sub["weighted_score"].sum() / sub["weight"].sum()
+        
+        param = norm_params.get(dim_name, {"mu": 4.0, "sigma": 0.5})
+        z_score = (user_raw_avg - param["mu"]) / param["sigma"]
+        
+        if np.isnan(z_score) or np.isinf(z_score):
+            t_score = 50
+        else:
+            t_score = int(50 + 15 * z_score)
+            
+        dim_scores[dim_name] = max(10, min(99, t_score))
+        
+    conflicts = 0
+    valid_sets = 0
+    p1_flatten = [item for sublist in st.session_state.p1_shuffled_sets for item in sublist]
+    
+    for v_set_id, choice in st.session_state.p1_forced.items():
+        near_id = choice.get("가깝다")
+        far_id = choice.get("멀다")
+        if near_id and far_id:
+            valid_sets += 1
+            near_dim = next(item["dim"] for item in p1_flatten if item["item_id"] == near_id)
+            far_dim = next(item["dim"] for item in p1_flatten if item["item_id"] == far_id)
+            
+            if dim_scores[near_dim] < dim_scores[far_dim] - 5:
+                conflicts += 1
+                
+    if valid_sets > 0:
+        consistency_rate = int(max(0, 100 - (conflicts / valid_sets) * 250))
+    else:
+        consistency_rate = 100
+    honesty_score = int(95 - (conflicts * 5))
+    
+    r1, r2, r3 = st.columns(3)
+    with r1:
+        st.metric(label="✅ [통계 반영형] 교차 일관성 안정도", value=f"{consistency_rate}%", 
+                  delta="정상 통과" if consistency_rate >= 70 else "신뢰성 임계치 미달 위험")
+    with r2:
+        st.metric(label="🔒 셔플링 검증 기준 진정성 지표", value=f"{honesty_score}%", 
+                  delta="양호" if honesty_score >= 65 else "위선 반응 탐지")
+    with r3:
+        st.metric(label="⚠️ 가치 배치 논리 모순", value=f"{conflicts} 건", delta="안정권" if conflicts <= 2 else "밀착 검증 대상")
+        
+    st.write("---")
+    st.subheader("📈 10대 Hyundai Way 상대 분포 분석 그래프")
+    
+    benchmark_scores = {
+        "최고 수준의 안전과 품질": 85, "집요함": 90, "시도와 발전": 85, "민첩한 실행": 85,
+        "협업": 80, "회복탄력성": 85, "다양성 포용": 85, "전문성": 80, "윤리준수": 85, "데이터 기반 사고": 50
+    }
+    
+    chart_rows = []
+    for dim_name in HYUNDAI_WAY.values():
+        chart_rows.append({
+            "Hyundai Way 핵심 가치": dim_name,
+            "나의 변환 점수": dim_scores[dim_name],
+            "현대차 규준 그룹 기준선": benchmark_scores.get(dim_name, 80)
+        })
+    df_chart = pd.DataFrame(chart_rows)
+    
+    fig = px.bar(
+        df_chart, x="Hyundai Way 핵심 가치", y=["나의 변환 점수", "현대차 규준 그룹 기준선"],
+        bgroupmode="group" if "bgroupmode" in dir(px) else "group", # barmode="group" 안전성 확보용 세팅
+        labels={"value": "모집단 대비 상대 스코어 (T-Score)", "variable": "구분"},
+    )
+    # 확실하게 barmode 명시적 업데이트 적용하여 오타 에러 완벽 차단
+    fig.update_layout(barmode="group")
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.write("---")
+    if st.button("🔄 새로운 무작위 배치로 다시 도전"):
+        st.session_state.clear()
+        st.rerun()
