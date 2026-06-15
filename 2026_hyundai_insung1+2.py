@@ -87,6 +87,29 @@ def get_master_part2():
     return data
 
 # ------------------------------------------------------------------
+# 🎯 [버그 해결 핵심] 실시간 체크박스 중복 해제 콜백 시스템
+# ------------------------------------------------------------------
+def on_near_click(item_id, all_ids):
+    # 내가 '가깝다'를 체크했다면
+    if st.session_state[f"near_check_{item_id}"]:
+        # 1. 같은 세트 내의 다른 가깝다 체크박스들을 전부 강제로 끈다
+        for oid in all_ids:
+            if oid != item_id:
+                st.session_state[f"near_check_{oid}"] = False
+        # 2. 같은 문항의 '멀다' 체크박스도 모순되므로 자동으로 끈다
+        st.session_state[f"far_check_{item_id}"] = False
+
+def on_far_click(item_id, all_ids):
+    # 내가 '멀다'를 체크했다면
+    if st.session_state[f"far_check_{item_id}"]:
+        # 1. 같은 세트 내의 다른 멀다 체크박스들을 전부 강제로 끈다
+        for oid in all_ids:
+            if oid != item_id:
+                st.session_state[f"far_check_{oid}"] = False
+        # 2. 같은 문항의 '가깝다' 체크박스도 모순되므로 자동으로 끈다
+        st.session_state[f"near_check_{item_id}"] = False
+
+# ------------------------------------------------------------------
 # [세션 상태 구조화 및 무작위 셔플링 초기화]
 # ------------------------------------------------------------------
 if "stage" not in st.session_state:
@@ -102,16 +125,26 @@ if "p1_page" not in st.session_state:
 if "p2_page" not in st.session_state:
     st.session_state.p2_page = 0
 
+p1_master = get_master_part1()
 if "p1_shuffled_sets" not in st.session_state:
-    p1_master = get_master_part1()
     random.seed(42) 
-    random.shuffle(p1_master)
+    p1_master_shuffled = p1_master.copy()
+    random.shuffle(p1_master_shuffled)
     
     shuffled_sets = []
     chunk_size = 3
-    for i in range(0, len(p1_master), chunk_size):
-        shuffled_sets.append(p1_master[i:i+chunk_size])
+    for i in range(0, len(p1_master_shuffled), chunk_size):
+        shuffled_sets.append(p1_master_shuffled[i:i+chunk_size])
     st.session_state.p1_shuffled_sets = shuffled_sets
+
+# 🧠 모든 체크박스의 메모리 상태 공간을 사전에 완전 독립 선언 (누수 방지)
+for item in p1_master:
+    k_near = f"near_check_{item['item_id']}"
+    k_far = f"far_check_{item['item_id']}"
+    if k_near not in st.session_state:
+        st.session_state[k_near] = False
+    if k_far not in st.session_state:
+        st.session_state[k_far] = False
 
 if "p2_shuffled_items" not in st.session_state:
     p2_master = get_master_part2()
@@ -130,7 +163,7 @@ if st.session_state.stage == "INTRO":
     
     ### ⚙️ 시스템 동작 규칙
     1. **문항 완전 무작위 배치 (Shuffling)**: 문항 순서가 완전히 뒤섞여 출제되므로 직전 답변에 의존해 끼워 맞추는 거짓 응답이 통하지 않습니다.
-    2. **가깝다/멀다 깔끔한 선택지**: 복잡한 안내 문구 없이 깔끔하게 [가깝다]와 [멀다] 전용 체크 박스로 모의 테스트가 진행됩니다.
+    2. **가깝다/멀다 자동 단일화**: 한 세트 내에서 [가깝다]나 [멀다]를 누르면 이미 체크되어 있던 다른 항목이 자동으로 꺼지며 중복 마킹을 완전 방지합니다.
     3. **정규분포 환산형 점수제**: 가상의 합격자 집단 분포 곡선과 비교하여 내 최종 위치를 상대점수로 도출합니다.
     """)
     if st.button("🚀 실전 셔플링 테스트 시작", type="primary"):
@@ -161,10 +194,7 @@ elif st.session_state.stage == "PART1":
         virtual_set_id = s_idx + 1
         st.markdown(f"#### 📦 무작위 세트 {virtual_set_id}")
         set_items = shuffled_sets[s_idx]
-        
-        # 이미 임시 저장된 기억이 있는지 확인하여 기본값 복원
-        saved_near_id = st.session_state.p1_forced[virtual_set_id]["가깝다"]
-        saved_far_id = st.session_state.p1_forced[virtual_set_id]["멀다"]
+        all_ids = [item["item_id"] for item in set_items]
         
         for item in set_items:
             i_id = item["item_id"]
@@ -182,31 +212,22 @@ elif st.session_state.stage == "PART1":
                     horizontal=True, key=f"likert_widget_{i_id}", label_visibility="collapsed"
                 )
                 
-            # 🎯 [요청 반영 및 버그 해결]: 오직 가깝다 / 멀다만 노출되도록 체크박스로 복귀
-            # 실시간 강제 새로고침(rerun)을 빼서 클릭 렉과 버튼 씹힘 현상을 완벽히 방지했습니다.
+            # 🎯 콜백 바인딩을 통해 중복 마킹을 클릭 순간 실시간 제어 처리
             with col_near:
-                st.checkbox("가깝다", key=f"near_check_{i_id}", value=(saved_near_id == i_id))
+                st.checkbox("가깝다", key=f"near_check_{i_id}", on_change=on_near_click, args=(i_id, all_ids))
                     
             with col_far:
-                st.checkbox("멀다", key=f"far_check_{i_id}", value=(saved_far_id == i_id))
+                st.checkbox("멀다", key=f"far_check_{i_id}", on_change=on_far_click, args=(i_id, all_ids))
         st.write("---")
         
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         if current_p1_page > 0:
             if st.button("이전 페이지"):
-                # 이전 페이지로 이동할 때 현재 선택값 임시 보존
-                for check_idx in range(start_set_idx, end_set_idx):
-                    v_id = check_idx + 1
-                    items_in_set = shuffled_sets[check_idx]
-                    n_id = next((it["item_id"] for it in items_in_set if st.session_state.get(f"near_check_{it['item_id']}", False)), None)
-                    f_id = next((it["item_id"] for it in items_in_set if st.session_state.get(f"far_check_{it['item_id']}", False)), None)
-                    st.session_state.p1_forced[v_id] = {"가깝다": n_id, "멀다": f_id}
                 st.session_state.p1_page -= 1
                 st.rerun()
                 
     with col_btn2:
-        # [다음 페이지] 또는 [파트2 이동] 버튼을 누를 때 컴퓨터가 한 번에 정밀 검증을 수행합니다.
         if current_p1_page < max_p1_pages - 1:
             if st.button("다음 페이지"):
                 has_error = False
@@ -214,16 +235,9 @@ elif st.session_state.stage == "PART1":
                     v_set_id = check_idx + 1
                     items_in_set = shuffled_sets[check_idx]
                     
-                    n_checked = [it["item_id"] for it in items_in_set if st.session_state.get(f"near_check_{it['item_id']}", False)]
-                    f_checked = [it["item_id"] for it in items_in_set if st.session_state.get(f"far_check_{it['item_id']}", False)]
+                    n_checked = [it["item_id"] for it in items_in_set if st.session_state[f"near_check_{it['item_id']}"]]
+                    f_checked = [it["item_id"] for it in items_in_set if st.session_state[f"far_check_{it['item_id']}"]]
                     
-                    # 중복 오류 검증
-                    double_check = set(n_checked) & set(f_checked)
-                    if double_check:
-                        st.error(f"⚠️ 무작위 세트 {v_set_id}번의 한 문항에 '가깝다'와 '멀다'를 동시에 체크할 수 없습니다.")
-                        has_error = True
-                        continue
-                        
                     if len(n_checked) != 1 or len(f_checked) != 1:
                         st.error(f"⚠️ 무작위 세트 {v_set_id}번은 반드시 '가깝다' 1개와 '멀다' 1개를 지정해야 합니다.")
                         has_error = True
@@ -240,15 +254,9 @@ elif st.session_state.stage == "PART1":
                     v_set_id = check_idx + 1
                     items_in_set = shuffled_sets[check_idx]
                     
-                    n_checked = [it["item_id"] for it in items_in_set if st.session_state.get(f"near_check_{it['item_id']}", False)]
-                    f_checked = [it["item_id"] for it in items_in_set if st.session_state.get(f"far_check_{it['item_id']}", False)]
+                    n_checked = [it["item_id"] for it in items_in_set if st.session_state[f"near_check_{it['item_id']}"]]
+                    f_checked = [it["item_id"] for it in items_in_set if st.session_state[f"far_check_{it['item_id']}"]]
                     
-                    double_check = set(n_checked) & set(f_checked)
-                    if double_check:
-                        st.error(f"⚠️ 무작위 세트 {v_set_id}번의 한 문항에 '가깝다'와 '멀다'를 동시에 체크할 수 없습니다.")
-                        has_error = True
-                        continue
-                        
                     if len(n_checked) != 1 or len(f_checked) != 1:
                         st.error(f"⚠️ 무작위 세트 {v_set_id}번은 반드시 '가깝다' 1개와 '멀다' 1개를 지정해야 합니다.")
                         has_error = True
@@ -256,11 +264,11 @@ elif st.session_state.stage == "PART1":
                         st.session_state.p1_forced[v_set_id] = {"가깝다": n_checked[0], "멀다": f_checked[0]}
                         
                 if not has_error:
-                    # 최종 전수 취합 처리
+                    # 전수 취합 데이터 세션 덤프 확정
                     for s_flat_idx, s_flat_items in enumerate(shuffled_sets):
                         fid = s_flat_idx + 1
-                        n_id = next((it["item_id"] for it in s_flat_items if st.session_state.get(f"near_check_{it['item_id']}", False)), None)
-                        f_id = next((it["item_id"] for it in s_flat_items if st.session_state.get(f"far_check_{it['item_id']}", False)), None)
+                        n_id = next((it["item_id"] for it in s_flat_items if st.session_state[f"near_check_{it['item_id']}"]), None)
+                        f_id = next((it["item_id"] for it in s_flat_items if st.session_state[f"far_check_{it['item_id']}"]), None)
                         st.session_state.p1_forced[fid] = {"가깝다": n_id, "멀다": f_id}
                         
                     st.session_state.stage = "PART2"
