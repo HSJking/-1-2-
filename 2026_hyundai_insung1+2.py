@@ -86,19 +86,34 @@ def get_master_part2():
         })
     return data
 
+p1_master = get_master_part1()
+p2_master = get_master_part2()
+
 # ------------------------------------------------------------------
-# [가로 한 줄 내에서만 배타적 동작을 수행하는 안전 콜백]
+# 🎯 [버그 해결 핵심] 데이터 유실 방지형 독립 영구 저장소 세팅
+# ------------------------------------------------------------------
+if "p1_storage" not in st.session_state:
+    # 최초 앱 실행 시 모든 문항의 '가깝다'를 True(기본 체크)로 인젝션
+    st.session_state.p1_storage = {item["item_id"]: {"near": True, "far": False} for item in p1_master}
+
+# ------------------------------------------------------------------
+# [가로 한 줄 내에서만 배타적 제어를 수행하는 콜백 매핑]
 # ------------------------------------------------------------------
 def on_near_toggle(item_id):
     if st.session_state[f"near_check_{item_id}"]:
         st.session_state[f"far_check_{item_id}"] = False
+    # 영구 저장소에 실시간 데이터 동기화
+    st.session_state.p1_storage[item_id]["near"] = st.session_state[f"near_check_{item_id}"]
+    st.session_state.p1_storage[item_id]["far"] = st.session_state[f"far_check_{item_id}"]
 
 def on_far_toggle(item_id):
     if st.session_state[f"far_check_{item_id}"]:
         st.session_state[f"near_check_{item_id}"] = False
+    st.session_state.p1_storage[item_id]["near"] = st.session_state[f"near_check_{item_id}"]
+    st.session_state.p1_storage[item_id]["far"] = st.session_state[f"far_check_{item_id}"]
 
 # ------------------------------------------------------------------
-# [세션 상태 구조화 및 초기화]
+# [세션 기본 변수 상태 선언]
 # ------------------------------------------------------------------
 if "stage" not in st.session_state:
     st.session_state.stage = "INTRO"
@@ -113,7 +128,6 @@ if "p1_page" not in st.session_state:
 if "p2_page" not in st.session_state:
     st.session_state.p2_page = 0
 
-p1_master = get_master_part1()
 if "p1_shuffled_sets" not in st.session_state:
     random.seed(42) 
     p1_master_shuffled = p1_master.copy()
@@ -125,18 +139,11 @@ if "p1_shuffled_sets" not in st.session_state:
         shuffled_sets.append(p1_master_shuffled[i:i+chunk_size])
     st.session_state.p1_shuffled_sets = shuffled_sets
 
-# 🎯 [요청 반영] 기본값으로 '가깝다'가 체크(True)되어 시작하도록 세팅 변경
-for item in p1_master:
-    kn = f"near_check_{item['item_id']}"
-    kf = f"far_check_{item['item_id']}"
-    if kn not in st.session_state: st.session_state[kn] = True  # True로 변경
-    if kf not in st.session_state: st.session_state[kf] = False
-
 if "p2_shuffled_items" not in st.session_state:
-    p2_master = get_master_part2()
     random.seed(42)
-    random.shuffle(p2_master)
-    st.session_state.p2_shuffled_items = p2_master
+    p2_master_shuffled = p2_master.copy()
+    random.shuffle(p2_master_shuffled)
+    st.session_state.p2_shuffled_items = p2_master_shuffled
 
 # ------------------------------------------------------------------
 # [화면 구성 - INTRO]
@@ -149,7 +156,7 @@ if st.session_state.stage == "INTRO":
     
     ### ⚙️ 시스템 동작 규칙
     1. **문항 완전 무작위 배치 (Shuffling)**: 문항 순서가 완전히 뒤섞여 출제되므로 직전 답변에 의존해 끼워 맞추는 거짓 응답이 통하지 않습니다.
-    2. **가깝다 기본 프리셋 시스템**: 모든 문항의 '가깝다'가 사전에 선택된 상태로 시작하여 마킹 속도를 단축시켜 줍니다.
+    2. **가깝다 자동 프리셋 완비**: 영구 백업 엔진을 통해 페이지를 앞뒤로 오가도 초기에 기본 세팅된 [가깝다] 마킹 밸런스가 흐트러지지 않습니다.
     3. **정규분포 환산형 점수제**: 가상의 합격자 집단 분포 곡선과 비교하여 내 최종 위치를 상대점수로 도출합니다.
     """)
     if st.button("🚀 실전 셔플링 테스트 시작", type="primary"):
@@ -183,6 +190,11 @@ elif st.session_state.stage == "PART1":
         
         for item in set_items:
             i_id = item["item_id"]
+            
+            # 🎯 [핵심 동기화 보완] 페이지 복원 및 컴포넌트 재생성 시 삭제되는 임시 저장 공간 강제 복구 로직
+            st.session_state[f"near_check_{i_id}"] = st.session_state.p1_storage[i_id]["near"]
+            st.session_state[f"far_check_{i_id}"] = st.session_state.p1_storage[i_id]["far"]
+            
             col_text, col_likert, col_near, col_far = st.columns([4, 4, 1, 1])
             
             with col_text:
@@ -212,31 +224,50 @@ elif st.session_state.stage == "PART1":
                 st.rerun()
                 
     with col_btn2:
+        # ⚡ 데이터 검증 시 volatile 메모리가 아닌 완벽한 영구 저장소(p1_storage)를 추적하여 버그의 근본 차단
         if current_p1_page < max_p1_pages - 1:
             if st.button("💾 답변 저장 후 다음 페이지"):
+                has_error = False
                 for check_idx in range(start_set_idx, end_set_idx):
                     v_set_id = check_idx + 1
                     items_in_set = shuffled_sets[check_idx]
                     
-                    n_checked = [it["item_id"] for it in items_in_set if st.session_state[f"near_check_{it['item_id']}"]]
-                    f_checked = [it["item_id"] for it in items_in_set if st.session_state[f"far_check_{it['item_id']}"]]
+                    n_checked = [it["item_id"] for it in items_in_set if st.session_state.p1_storage[it["item_id"]]["near"]]
+                    f_checked = [it["item_id"] for it in items_in_set if st.session_state.p1_storage[it["item_id"]]["far"]]
                     
-                    st.session_state.p1_forced[v_set_id] = {
-                        "가깝다": n_checked[0] if len(n_checked) > 0 else None,
-                        "멀다": f_checked[0] if len(f_checked) > 0 else None
-                    }
-                st.session_state.p1_page += 1
-                st.rerun()
+                    if len(n_checked) != 1 or len(f_checked) != 1:
+                        st.error(f"⚠️ 무작위 세트 {v_set_id}번은 반드시 '가깝다' 1개와 '멀다' 1개를 지정해야 합니다. (조정 요망)")
+                        has_error = True
+                    else:
+                        st.session_state.p1_forced[v_set_id] = {"가깝다": n_checked[0], "멀다": f_checked[0]}
+                
+                if not has_error:
+                    st.session_state.p1_page += 1
+                    st.rerun()
         else:
             if st.button("🏁 파트 1 데이터 확정 및 파트 2 진입", type="primary"):
-                for s_flat_idx, s_flat_items in enumerate(shuffled_sets):
-                    fid = s_flat_idx + 1
-                    n_id = next((it["item_id"] for it in s_flat_items if st.session_state[f"near_check_{it['item_id']}"]), None)
-                    f_id = next((it["item_id"] for it in s_flat_items if st.session_state[f"far_check_{it['item_id']}"]), None)
-                    st.session_state.p1_forced[fid] = {"가깝다": n_id, "멀다": f_id}
+                has_error = False
+                for check_idx in range(start_set_idx, end_set_idx):
+                    v_set_id = check_idx + 1
+                    items_in_set = shuffled_sets[check_idx]
                     
-                st.session_state.stage = "PART2"
-                st.rerun()
+                    n_checked = [it["item_id"] for it in items_in_set if st.session_state.p1_storage[it["item_id"]]["near"]]
+                    f_checked = [it["item_id"] for it in items_in_set if st.session_state.p1_storage[it["item_id"]]["far"]]
+                    
+                    if len(n_checked) != 1 or len(f_checked) != 1:
+                        st.error(f"⚠️ 무작위 세트 {v_set_id}번은 반드시 '가깝다' 1개와 '멀다' 1개를 지정해야 합니다.")
+                        has_error = True
+                        
+                if not has_error:
+                    # 전수 취합 데이터 최종 병합 가공
+                    for s_flat_idx, s_flat_items in enumerate(st.session_state.p1_shuffled_sets):
+                        fid = s_flat_idx + 1
+                        n_id = next((it["item_id"] for it in s_flat_items if st.session_state.p1_storage[it["item_id"]]["near"]), None)
+                        f_id = next((it["item_id"] for it in s_flat_items if st.session_state.p1_storage[it["item_id"]]["far"]), None)
+                        st.session_state.p1_forced[fid] = {"가깝다": n_id, "멀다": f_id}
+                        
+                    st.session_state.stage = "PART2"
+                    st.rerun()
 
 # ------------------------------------------------------------------
 # [화면 구성 - PART 2]
@@ -387,7 +418,47 @@ else:
     fig.update_layout(barmode="group")
     st.plotly_chart(fig, use_container_width=True)
     
+    # ------------------------------------------------------------------
+    # 🎯 [신규 기능] 분석글 및 보완 필요성 정밀 진단 리포트 출력단
+    # ------------------------------------------------------------------
     st.write("---")
+    st.header("🔍 10대 Hyundai Way 다차원 성향 진단서")
+    
+    # 상위/하위 3대 역량 추출 정렬 데이터 가공
+    sorted_scores = sorted(dim_scores.items(), key=lambda x: x[1], reverse=True)
+    top_3 = sorted_scores[:3]
+    bottom_3 = sorted_scores[-3:]
+    
+    c_str, c_need = st.columns(2)
+    with c_str:
+        st.markdown("### 🌟 나의 상위 3대 핵심 강점 지표")
+        df_top_dims = pd.DataFrame(top_3, columns=["Hyundai Way 핵심 가치", "나의 T-스코어"])
+        st.table(df_top_dims)
+        st.markdown("""
+        > **강점 지표 해석 가이드**: 위의 3가지 영역은 규준 집단(Norm Group)인 우수 합격자 분하 대비 확고한 성향 우위를 확보한 지표입니다. 
+        실제 현대자동차 면접장에서 구체적인 에피소드를 질문받았을 때 가장 강력하게 나를 어필할 수 있는 핵심 무기가 됩니다.
+        """)
+        
+    with c_need:
+        st.markdown("### ⚠️ 보완이 필요한 하위 3대 열세 지표")
+        df_bot_dims = pd.DataFrame(bottom_3, columns=["Hyundai Way 핵심 가치", "나의 T-스코어"])
+        st.table(df_bot_dims)
+        st.markdown("""
+        > **열세 지표 방어 가이드**: 해당 역량들은 현대차 합격 컷오프 수직선 대비 상대적으로 보완이 필요한 지표군입니다. 
+        이 점수들이 과도하게 낮을 경우 면접관 가이드 리포트에 '검증 필요 리스크' 신호가 인쇄되어 압박 질문이 들어올 확률이 매우 높습니다.
+        """)
+        
+    st.write("---")
+    st.markdown("### 💡 현대자동차 실전 패스를 위한 직무 맞춤형 면접 보안 전략")
+    
+    st.info("🛠️ **엔지니어링 및 플랜트 제조 트랙 핵심 합격 가이드라인**")
+    st.markdown("""
+    1. **[최고 수준의 안전과 품질] & [윤리준수] 점수 미달 시**:
+       * 대기업 제조 현장에서는 즉흥적인 번뜩임보다 정해진 공정 규정(SOP)과 안전 제어 원칙을 무한히 반복하고 사수하는 태도를 1순위로 평가합니다. 만약 이 지표가 합격선보다 낮게 탐지되었다면, 면접 시 '사소한 공정 누락이나 규칙 위반 가능성을 차단하기 위해 나만의 정밀 체크리스트나 정량적 시스템을 구축해 극복한 사례'를 중심으로 소명해야 합니다.
+    2. **[집요함] & [회복탄력성] 보완 방법**:
+       * 불확실성이 높은 라인 운영 환경 특성상 돌발적인 설비 문제나 공정 에러에 직면했을 때 감정적으로 무너지지 않는 강인함이 필수적입니다. T-스코어가 불안정하게 잡힌 경우, 과거 기술적 자격증 시험이나 복잡한 프로젝트를 준비하며 겪었던 좌절 경험을 솔직하게 인정하되, 어떤 데이터 중심 루틴과 마인드셋을 가동해 끝까지 목표를 완수했는지 '행동 중심(Action)'으로 어필하세요.
+    """)
+    
     if st.button("🔄 새로운 무작위 배치로 다시 도전"):
         st.session_state.clear()
         st.rerun()
