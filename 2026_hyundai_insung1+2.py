@@ -1,309 +1,513 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import numpy as np
+요청하신 대로 생략되는 부분 없이 **360개 문항 전체를 완벽하게 포함한 풀 스크립트**로 변환했습니다.
+
+이 코드를 그대로 복사해서 `assessment_engine.py`로 저장하시면 바로 작동합니다.
+
+---
+
+## 🐍 대기업 인성검사 엔진 완제품 (`assessment_engine.py`)
+
+```python
 import random
+from typing import List, Dict, Any
 
-st.set_page_config(page_title="현대자동차 10대 Hyundai Way 통합 인성검사 PRO", layout="wide")
-
-HYUNDAI_WAY = {
-    1: "최고 수준의 안전과 품질",
-    2: "집요함",
-    3: "시도와 발전",
-    4: "민첩한 실행", 
-    5: "협업",
-    6: "회복탄력성",
-    7: "다양성 포용",
-    8: "전문성",
-    9: "윤리준수",
-    10: "데이터 기반 사고"
-}
-
-# 🎯 [기출 완벽 복원] 사진 속 오피셜 문항들을 그대로 데이터베이스에 반영했습니다.
-BASE_SAMPLES = [
-    {"text": "상황에 따라 처음 계획이 바뀔 때가 많다.", "dim": "회복탄력성"},
-    {"text": "그림이나 사진을 보고 별로 정서적 감흥이 일어나지 않는다.", "dim": "다양성 포용"},
-    {"text": "남들에게 어떤 인상을 남기기 위해 쇼를 하기도 한다.", "dim": "윤리준수"},
-    {"text": "나는 항상 모든 규칙을 지켜왔다.", "dim": "윤리준수"},
-    {"text": "다큐멘터리나 교양 프로그램을 즐겨 본다.", "dim": "시도와 발전"},
-    {"text": "다른 사람의 감정에 공감을 잘한다.", "dim": "협업"},
-    {"text": "일을 처리할 때 완벽을 기하기 위해 끊임없이 점검한다.", "dim": "최고 수준의 안전과 품질"},
-    {"text": "새로운 사람들과 어울리는 것이 즐겁고 에너지가 생긴다.", "dim": "다양성 포용"},
-    {"text": "어려운 문제가 닥쳤을 때 쉽게 포기하지 않고 끝까지 해결책을 찾는다.", "dim": "집요함"},
-    {"text": "계획이 급격하게 변경되어도 신속하게 적응하고 대처한다.", "dim": "민첩한 실행"},
-    {"text": "다양한 문화나 예술에 대해 깊은 관심을 가지고 있다.", "dim": "시도와 발전"},
-    {"text": "원칙이나 법률을 위반하는 행동은 절대로 용납할 수 없다.", "dim": "윤리준수"},
-    {"text": "데이터나 통계 자료를 바탕으로 객관적인 판단을 내린다.", "dim": "데이터 기반 사고"},
-    {"text": "팀원들의 서로 다른 성향이나 배경을 적극적으로 포용한다.", "dim": "다양성 포용"},
-    {"text": "내 분야에서 최고 수준의 전문성을 갖추기 위해 끊임없이 학습한다.", "dim": "전문성"}
+# 360개 문항 전체 데이터 리스트
+ALL_360_QUESTIONS: List[str] = [
+    "타박을 받아도 위축되거나 기가 죽지 않는다.",
+    "몸이 피곤할 때도 명랑하게 행동한다.",
+    "익숙지 않은 집단이나 장소로 옮겨가는 것이 꺼려진다.",
+    "타인의 지적을 순수하게 받아들일 수 있다.",
+    "매일의 목표가 있는 생활을 하고 있다.",
+    "실패했던 기억을 되새기면서 고민하는 편이다.",
+    "언제나 생기가 있고 열정적이다.",
+    "상품을 선택하는 취향이 오랫동안 바뀌지 않는다.",
+    "자신을 과시하다가 으스댄다는 핀잔을 듣곤 한다.",
+    "동료가 될 사람을 1명만 택한다면 자기유능감이 높은 사람을 뽑겠다.",
+    "열등감으로 자주 고민한다.",
+    "많은 사람들을 만나는 것을 좋아한다.",
+    "새로운 것에 대한 호기심이 잘 생기지 않는다.",
+    "사람들을 쉽게 믿고 그들을 이해하려 노력한다.",
+    "무엇이든 꾸준히 하면 스스로 해낼 수 있다고 믿는다.",
+    "남에게 무시당하면 화가 치밀어 주체할 수 없다.",
+    "과묵하고 소극적이라는 평가를 받곤 한다.",
+    "상상보다는 사실지향성에 무게를 두는 편이다.",
+    "남의 의견을 호의적으로 받아들이고 협조적이다.",
+    "별로 반성하지 않으며, 게으름을 부리곤 한다.",
+    "물건을 살 때 꼭 필요한 것인지 따져보며 충동구매를 하지 않는다.",
+    "일부 특정한 사람들하고만 교제를 하는 편이다.",
+    "일반적이고 확실한 것이 아니라면 거절하는 편이다.",
+    "남에게 자신의 진심을 표현하기를 주저하는 편이다.",
+    "임무를 달성하기 위해 목표를 분명하게 세운다.",
+    "사고 싶은 것이 있으면 따지지 않고 바로 사곤 한다.",
+    "낯선 사람에게도 친근하게 먼저 말을 건네는 편이다.",
+    "다양성을 존중해 새로운 의견을 수용하는 편이다.",
+    "남의 말을 들을 때 진위를 의심하곤 한다.",
+    "시험 전에도 노는 계획을 세우곤 한다.",
+    "주변 상황에 따라 기분이 수시로 변하곤 한다.",
+    "몸담고 있는 동호회나 모임이 여러 개이다.",
+    "익숙한 것만을 선호하다가 변화에 적응하지 못할 때가 많다.",
+    "나를 비판하는 사람의 진짜 의도를 의심해 공격적으로 응수한다.",
+    "도중에 실패해도 소임을 다하기 위해 끝까지 추진한다.",
+    "고민이 있어도 지나치게 걱정하지 않는다.",
+    "많은 사람들 앞에서 말하는 것이 서툴다.",
+    "지적 흥미에 관심이 많고, 새로운 지식에 포용적이다.",
+    "사람들을 믿지 못해 불편할 때가 많다.",
+    "자신의 책임을 잊고 경솔하게 행동하곤 한다.",
+    "기분 나쁜 일은 금세 잊는 편이다.",
+    "다과회, 친목회 등의 소모임에서 책임을 자주 맡는다.",
+    "부모님의 권위를 존중해 그분들의 말씀에 거의 순종한다.",
+    "나의 이익을 지키려면 반드시 타인보다 우위를 점해야 한다고 생각한다.",
+    "언행이 가볍다고 자주 지적받는다.",
+    "슬럼프에 빠지면 좀처럼 헤어나지 못한다.",
+    "자신이 기력이 넘치며 사교적이라고 생각한다.",
+    "익숙한 일·놀이에 진부함을 잘 느끼고, 새로운 놀이 활동에 흥미를 크게 느낀다.",
+    "친구들을 신뢰해 그들의 말을 잘 듣는 편이다.",
+    "인생의 목표와 방향이 뚜렷하며 부지런하다는 평가를 받곤 한다.",
+    "감정을 잘 조절해 여간해서 흥분하지 않는 편이다.",
+    "느긋하고 서두르지 않으며 여유로운 편이다.",
+    "새로운 유행이 시작되면 다른 사람보다 먼저 시도해 보는 편이다.",
+    "친구와 다투면 먼저 손을 내밀어 화해하지 못해 친구를 잃곤 한다.",
+    "자신이 유능하다고 믿기 때문에 자신감이 넘친다.",
+    "걱정거리가 머릿속에서 쉽사리 잊히지 않는 편이다.",
+    "혼자 있을 때가 편안하다.",
+    "비유적 상징적인 것보다는 사실적 현실적인 표현을 선호한다.",
+    "모르는 사람은 믿을 수 없으므로 경계하는 편이다.",
+    "책임감, 신중성 등 자신에 대한 주위의 평판이 좋다고 생각한다.",
+    "슬픈 일만 머릿속에 오래 남는다.",
+    "꾸물대는 것이 싫어 늘 서두르는 편이다.",
+    "예술가가 된 나의 모습을 상상하곤 한다.",
+    "칭찬도 나쁘게 받아들이는 편이다.",
+    "경솔한 언행으로 분란을 일으킬 때가 종종 있다.",
+    "삶이 버겁게 느껴져 침울해지곤 한다.",
+    "상상 속에서 이야기를 잘 만들어 내는 편이다.",
+    "윗사람, 아랫사람 가리지 않고 쉽게 친해져 어울린다.",
+    "손해를 입지 않으려고 약삭빠르게 행동하는 편이다.",
+    "기왕 일을 한다면 꼼꼼하게 하는 편이다.",
+    "비난을 받으면 몹시 신경이 쓰이고 자신감을 잃는다.",
+    "주위 사람들에게 인사하는 것이 귀찮다.",
+    "창의력과 상상력이 풍부하다는 이야기를 자주 듣는다.",
+    "자기중심적인 관점에서 남을 비판하곤 한다.",
+    "지나치게 깔끔하고 싶은 강박증이 있다.",
+    "세밀한 계획을 세워도 과도한 불안을 느낄 때가 많다.",
+    "항상 바쁘게 살아가는 편이다.",
+    "타인이 예상하지 못한 엉뚱한 행동, 생각을 할 때가 자주 있다.",
+    "의견이 어긋날 때는 먼저 한발 양보하는 편이다.",
+    "어떤 일을 시도하다가 잘 안되면 금방 포기한다.",
+    "긴박한 상황에 맞닥뜨리면 자신감을 잃을 때가 많다.",
+    "처음 만난 사람과 이야기하는 것이 피곤하다.",
+    "이것저것 새로운 것에 관심이 많고 새로운 것을 배우고 싶다.",
+    "싫은 사람과도 충분히 협력할 수 있다고 생각한다.",
+    "꾸준하고 참을성이 있다는 말을 자주 듣는다.",
+    "신호 대기 중에도 조바심이 난다.",
+    "남들보다 우월한 지위에서 영향력을 행사하고 싶다.",
+    "'왜?'라는 질문을 자주 한다.",
+    "좋아하지 않는 사람이라도 친절하고 공손하게 대한다.",
+    "세부적인 내용을 일목요연하게 정리해 공부한다.",
+    "상대가 통화 중이면 다급해져 연속해서 전화를 건다.",
+    "쾌활하고 자신감이 강하며 남과의 교제에 적극적이다.",
+    "궁금한 점이 있으면 꼬치꼬치 따져서 반드시 궁금증을 풀고 싶다.",
+    "사람들은 누구나 곤경을 회피하려고 거짓말을 한다.",
+    "물건을 분실하거나 어디에 두었는지 기억 못할 때가 많다.",
+    "충동적인 행동을 하지 않는 편이다.",
+    "상대방이 말을 걸어오기를 기다리는 편이다.",
+    "새로운 생각들을 수용해 자신의 관점을 쉽게 수정하는 편이다.",
+    "기분을 솔직하게 드러내는 편이어서 남들이 나의 기분을 금방 알아채곤 한다.",
+    "의지와 끈기가 강한 편이다.",
+    "어떤 상황에서든 만족할 수 있다.",
+    "모르는 사람에게 말을 걸기보다는 혼자 있는 게 좋다.",
+    "어떤 일이든 새로운 방향에서 이해할 수 있다고 생각한다.",
+    "부모님이나 친구들에게 진심을 잘 고백하는 편이다.",
+    "참을성이 있지만 융통성이 부족하다는 말을 듣곤 한다.",
+    "깜짝 놀라면 몹시 당황하는 편이다.",
+    "아는 사람이 많아져 대인관계를 넓히는 것을 선호한다.",
+    "내면의 감수성, 지적 흥미에 충실하며 내면세계에 관심이 많다.",
+    "사람들은 이득이 된다면 옳지 않은 방법이라도 쓸 것이다.",
+    "세밀하게 설정된 계획표를 성실하게 실천하려 노력하는 편이다.",
+    "난처한 헛소문에 휘말려도 개의치 않는다.",
+    "매사에 진지하려고 노력한다.",
+    "급진적인 변화를 선호한다.",
+    "주변 사람들의 감정과 욕구를 잘 이해하는 편이다.",
+    "대체로 먼저 할 일을 해 놓고 나서 노는 편이다.",
+    "긴급 사태에도 당황하지 않고 행동할 수 있다.",
+    "일할 때 자신의 생각대로 하지 못할 때가 많다.",
+    "새로운 변화를 싫어한다.",
+    "다른 사람의 감정에 민감하다.",
+    "시험을 보기 전에 먼저 꼼꼼하게 공부 계획표를 짠다.",
+    "삶에는 고통을 주는 것들이 너무 많다고 생각한다.",
+    "내성적인 성격 때문에 윗사람과의 대화가 꺼려진다.",
+    "새로운 물건에서 신선한 아름다움을 느낄 때가 많다.",
+    "사람들이 정직하게 행동하는 것은 타인의 비난이 두렵기 때문이다.",
+    "계획에 따라 규칙적인 생활을 하는 편이다.",
+    "걱정거리가 있으면 잠을 잘 수가 없다.",
+    "자기주장만 지나치게 내세워 소란을 일으키곤 한다.",
+    "예술 작품에서 큰 감동을 받곤 한다.",
+    "싹싹하고 협조적이라는 평가를 받곤 한다.",
+    "소지품을 잘 챙기지 않아 잃어버리곤 한다.",
+    "즐거운 일보다는 괴로운 일이 더 많다.",
+    "누가 나에게 말을 걸기 전에는 내가 먼저 말을 걸지 않는다.",
+    "기본에 얽매이는 정공법보다는 창의적인 변칙을 선택하곤 한다.",
+    "쉽게 양보를 하는 편이다.",
+    "신발이나 옷이 떨어져도 무관심해 단정하지 못할 때가 종종 있다.",
+    "사소한 일에도 긴장해 위축되곤 한다.",
+    "타인과 어울리는 것보다는 혼자 지내는 것이 즐겁다.",
+    "직업을 선택할 때 창조력과 심미안이 필요한 것을 선호한다.",
+    "자기 것을 이웃에게 잘 나누어주는 편이다.",
+    "몇 번이고 생각하고 검토한다.",
+    "어떤 일을 실패하면 두고두고 생각한다.",
+    "친구와 웃고 떠드는 것을 별로 좋아하지 않는다.",
+    "창조적인 일을 하고 싶다.",
+    "자기 것을 덜 주장하고, 덜 고집하는 편이다.",
+    "일단 결정된 것은 완수하기 위해 자신의 능력을 총동원한다.",
+    "수줍음이 많아서 사람들 앞에서 너무 위축되곤 한다.",
+    "비교적 말이 없고 무난한 것을 선호하는 편이다.",
+    "새로운 것을 고안하는 일에서 큰 즐거움을 느낀다.",
+    "나의 이익에 직접적인 영향을 주는 사안에 대해서는 고집을 꺾지 않는다.",
+    "사회적 규범을 지키려 애쓰고 목표 의식이 뚜렷한 편이다.",
+    "나를 기분 나쁘게 한 사람을 쉽게 잊지 못한다.",
+    "내성적이어서 낯선 이와 만나는 것을 꺼리는 편이다.",
+    "예술적 감식안이 있는 편이다.",
+    "남의 명령이 듣기 싫고 자기 본위적인 편이다.",
+    "규율을 따르느라 때로는 융통성이 부족해지곤 한다.",
+    "나를 힘들게 하는 일들이 너무 많다고 여긴다.",
+    "마음을 터놓고 지내는 친구들이 적은 편이다.",
+    "창조력은 부족하지만 실용적인 사고에 능숙한 편이다.",
+    "남이 일하는 방식이 못마땅해 공격적으로 참견하곤 한다.",
+    "여러 번 생각한 끝에 결정을 내린다.",
+    "주변 사람이 잘되는 것을 보면 상대적으로 내가 실패한 것 같다.",
+    "대중의 주목을 받는 연예인이 되고 싶은 마음은 조금도 없다.",
+    "예술제나 미술전 등에 관심이 많다.",
+    "조화로운 신뢰 관계를 유지하기 위해 타인의 이름을 기억하려 노력하는 편이다.",
+    "도서실 등에서 책을 정돈하고 관리하는 일을 싫어하지 않는다.",
+    "남의 비난에도 스트레스를 잘 받지 않는다.",
+    "여럿이 모여서 얘기하는 데 잘 끼어들지 못한다.",
+    "공상이나 상상을 많이 하는 편이다.",
+    "예절은 가식처럼 느껴지기 때문에 잘 신경 쓰지 않는 편이다.",
+    "선입견으로 섣불리 단정하지 않기 위해 주의 깊게 살피는 편이다.",
+    "불확실한 미래에 대한 염려는 불필요하다고 생각한다.",
+    "처음 보는 사람들과 쉽게 얘기하고 친해지는 편이다.",
+    "참신한 물건을 개발하는 일이 적성에 맞는 것 같다.",
+    "의기양양하며 공격적인 사람보다는 겸손하며 이해심이 많은 사람이 되고 싶다.",
+    "주어진 일을 매듭짓기 위해 끝까지 매달리는 편이다.",
+    "기분 나쁜 일은 오래 생각하지 않는다.",
+    "모르는 사람들이 많이 있는 곳에서도 활발하게 행동하는 편이다.",
+    "새로운 아이디어를 생각해내는 일이 좋다.",
+    "대인관계에서 상황을 빨리 파악하는 편이다.",
+    "전표 계산 또는 장부 기입 같은 일을 싫증 내지 않고 할 수 있다.",
+    "근심이 별로 없고, 정서적인 반응이 무딘 편이다.",
+    "모임에서 말을 많이 하고 적극적으로 행동한다.",
+    "사건 뒤에 숨은 본질을 생각해 보기를 좋아한다.",
+    "나는 이해득실에 밝은 현실주의자라고 생각한다.",
+    "자신의 장래를 위해 1년, 5년, 10년 등 장단기 목표를 세운다.",
+    "자신의 처한 환경에서 불안, 분노, 우울, 절망 등을 잘 느끼지 않는다.",
+    "여기저기에 친구나 아는 사람들이 많이 있다.",
+    "색채 감각이나 미적 센스가 풍부한 편이다.",
+    "남의 감정을 잘 이해하는 편이라서 남이 나에게 고민 상담을 요청할 때가 많다.",
+    "신중하고 주의 깊다는 평가를 받곤 한다.",
+    "대체로 걱정하거나 고민하지 않는다.",
+    "활발하고 적극적이라는 말을 자주 듣는다.",
+    "엉뚱한 일을 하기 좋아하고 발상도 개성적이다.",
+    "남들과 껄끄러운 상황을 되도록 회피하려고 한다.",
+    "일을 완료하기 전에는 쉬어도 마음이 편하지 않다.",
+    "일반적으로 낙담할 일을 당해도 쉽게 상처받지 않는다.",
+    "혼자 조용히 있기보다는 사람들과 어울리려고 한다.",
+    "지적 흥미를 충족하기 위해 책과 신문을 많이 읽는다.",
+    "타인과 더불어 살려면 반드시 법을 지켜야 한다.",
+    "실패하든 성공하든 장래를 위해 그 원인을 반드시 분석한다.",
+    "화가 날 법한 상황을 잘 참는 편이다.",
+    "활동이 많으면서도 무난하고 점잖다는 말을 듣곤 한다.",
+    "패션과 아름다움에 대한 감각이 둔한 편이다.",
+    "타인을 잘 믿는 편이며, 남을 돕기를 주저하지 않는다.",
+    "매사에 충분히 준비되어 있다는 자신감이 든다.",
+    "비관적이고 무기력한 상황을 견디기 힘들다.",
+    "앞에 나서서 통솔하기보다는 다른 이의 지휘에 잘 따르는 편이다.",
+    "자신의 감수성을 발휘하면 좋은 에세이를 쓸 수 있을 것 같다.",
+    "상대방의 기분을 잘 이해한다.",
+    "과업을 이루려면 준법정신이 반드시 필요하다.",
+    "실수를 하면 하루 종일 기분이 좋지 않다.",
+    "혼자서 일하기를 좋아한다.",
+    "낯선 곳에서 생소한 풍취를 즐길 수 있는 여행이 좋다.",
+    "공식적인 요청이 없더라도 회사의 행사에는 참여해야 한다.",
+    "성공하기 위해서는 반드시 자신을 통제해야 한다고 생각한다.",
+    "화가 나면 주변에 있는 물건을 집어던지곤 한다.",
+    "조용하고 명상적인 분위기를 좋아한다.",
+    "박람회 등에서 견학을 하여 지식을 넓히는 일을 좋아한다.",
+    "집단의 협동을 위해서 월간 정보, 공지 사항을 꼼꼼하게 확인하는 편이다.",
+    "시간을 시 분 단위로 세밀하게 나눠 쓴다.",
+    "욕구를 느끼면 기존의 것을 무시하고 충동적으로 행동하는 편이다.",
+    "친구를 잘 바꾸지 않는다.",
+    "상품을 고를 때 디자인과 색에 신경을 많이 쓴다.",
+    "다른 사람과 싸워도 쉽게 화해할 수 있다.",
+    "삶의 목표를 이루려면 정성스럽고 참된 행동이 가장 중요하다고 생각한다.",
+    "예기치 못한 일이 발생해도 침착함을 유지한다.",
+    "모든 일에 앞장서는 편이다.",
+    "한때는 예술가를 꿈꾸며 습작에 매달린 적이 있다.",
+    "부서의 협력을 위해 상사의 명령은 반드시 수행해야 한다고 생각한다.",
+    "큰일을 이루고 싶은 야망을 위해 자신을 닦아세우는 편이다.",
+    "자신에 대한 주위의 잘못된 소문에도 크게 화를 내지 않는다.",
+    "남을 지배하는 사람이 되고 싶다.",
+    "실내 장식품이나 액세서리 등에 관심이 많다.",
+    "자신의 행동이 타인에게 무례하게 보이지는 않는지 살피는 편이다.",
+    "걸리지만 않는다면 융통성을 위해 법을 조금은 어겨도 괜찮다.",
+    "감정에 휘둘려 섣부른 판단을 하지 않으려고 애쓴다.",
+    "외딴 곳보다는 사람들이 북적거리는 곳에 살고 싶다.",
+    "지자체에서 개최하는 각종 예술제 소식에 관심이 많다.",
+    "인간은 착한 본성을 가지고 태어났다고 생각한다.",
+    "마감이 다가오기 전에 미리 업무를 마무리하는 편이다.",
+    "누군가 내 험담을 하는 것은 아닌지 괜스레 불안할 때가 있다.",
+    "혼자서 하는 일보다는 여러 사람을 두루 만나는 일이 더 마음에 든다.",
+    "무슨 감정이든 쉽게 몰입하며 낯선 것에 흥미를 느끼는 편이다.",
+    "대화를 할 때 남을 더 배려하는 편이다.",
+    "어떻게 일해야 더 효율적일지 늘 고민한다.",
+    "나쁜 일이 일어나도 쉽게 떨쳐낼 수 있다.",
+    "바쁜 도시보다는 한적한 자연에 묻혀 느긋하게 살고 싶다.",
+    "추운 지역에 사는 주민들에게 냉장고를 파는 방법처럼 상식의 틀을 깨는 사고방식을 선호한다.",
+    "모임이 있을 때 주로 남들에게 맞춰주는 편이다.",
+    "주위를 항상 청결하게 하려고 노력하는 편이다.",
+    "화가 나도 적당히 조절하며 남에게 화풀이를 하지 않는다.",
+    "휴일에 집에만 머물지 않고 외출해 나를 찾는 친구들과 어울리는 편이다.",
+    "생활 주변에 있는 설치미술 작품을 보면서 깊은 감명을 받는다.",
+    "남을 도울 때 큰 보람을 느낀다.",
+    "일을 추진하기 전에 새로운 방법은 없는지 찾아보는 편이다.",
+    "무기력을 자주 느끼며, 그럴 때마다 열등감 때문에 속을 썩인다.",
+    "조직 내에서 주목을 받을 때는 난처함을 느낀다.",
+    "기존의 종교적 정치적 가치는 언제든 재검토될 수 있다고 생각한다.",
+    "타인이 나를 돕는 것에는 다른 뜻이 숨어 있다고 생각한다.",
+    "조직의 실패를 비판할 때 자책감을 자주 느낀다.",
+    "자질구레한 일로 갑자기 화를 잘 내는 편이다.",
+    "잘하지는 못하지만 발표를 마다하지 않는다.",
+    "현실적인 것, 실용적인 것, 익숙한 것을 선호한다.",
+    "타인의 행복에 관심이 적고, 타인에게 상냥하지 않은 편이다.",
+    "목표를 세웠으나 흐지부지되는 경우가 많은 편이다.",
+    "일을 그르쳤을 때 그 원인을 알아내지 못하면 크게 불안하다.",
+    "모르는 사람과 이야기하는 것은 용기가 필요하다.",
+    "잘하지 못하더라도 자신의 창의성을 바탕으로 끝까지 해내려 한다.",
+    "남의 생일이나 명절 때 선물을 사러 다니는 일이 귀찮게 느껴진다.",
+    "다른 사람들이 하지 못하는 일을 하고 싶다.",
+    "집에서 가만히 있으면 기분이 우울해진다.",
+    "번잡한 인간관계를 잠시 접어두고 혼자서 여행을 떠나고 싶을 때가 자주 있다.",
+    "지적 호기심이 별로 없고, 감정이 건조한 편이다.",
+    "반대에 부딪혀도 자신의 의견을 끝까지 고집한다.",
+    "일을 할 때는 노력한 만큼 명시적인 결과를 내는 것이 중요하다고 생각한다.",
+    "지금까지 후회를 하면서 마음을 썩인 적이 거의 없다.",
+    "다른 사람과 몸을 많이 부딪치는 거친 운동에 도전하는 편이다.",
+    "여행을 가서 새로운 자극을 경험하는 것을 선호한다.",
+    "남들이 반대해도 내 생각을 절대 바꾸지 않는다.",
+    "어려움에 빠져도 좌절하지 않고 정성스럽게 행동한다.",
+    "다소 비관적이어서 좀처럼 결단을 내리지 못하는 경우가 있다.",
+    "그룹 내에서는 누군가의 주도 아래 따라가는 경우가 많다.",
+    "낯선 것은 다양한 변화를 이끌 가능성이 많다고 본다.",
+    "남들이 내 일에 관여하면 방해를 받은 것 같아 비협조적으로 된다.",
+    "계획 없이 행동을 먼저 하다가 포기할 때가 간혹 있다.",
+    "고민 때문에 끙끙거리며 생각할 때가 많다.",
+    "남들과의 관계가 어색해지면 입을 다무는 경우가 많다.",
+    "현실에 만족하지 않고 변화를 추구하는 편이다.",
+    "자신의 감정을 솔직하게 드러내고, 타인에게 상냥하고 너그러운 편이다.",
+    "실행하기 전에 재확인할 때가 많다.",
+    "인내력이 약하고 성격이 급하다는 소리를 자주 듣는다.",
+    "타인과 사적(私적)인 교제보다는 공적(公적)인 거리를 유지하는 것을 선호한다.",
+    "나는 복잡해서 깊은 이해가 필요한 문제를 푸는 것에 흥미를 느낀다.",
+    "반드시 남을 앞질러 이기고 싶어 몹시 경쟁적일 때가 있다.",
+    "목표를 거의 매번 성취하는 편이다.",
+    "삶은 원래 허무한 것이라는 생각 때문에 세상이 괴롭고 귀찮게 느껴지곤 한다.",
+    "개인적인 행사에서 사회를 맡는 일처럼 대중 앞에 서는 일에 관심이 많다.",
+    "소설을 읽을 때는 대리만족과 심리적 쾌감이 중요하다고 생각한다.",
+    "사람은 누구나 실패할 수 있으므로 서로 도와야 한다고 생각한다.",
+    "타인과 대화할 때 내 생각을 잘 정리해 조리 있게 말하려고 하는 편이다.",
+    "나는 곤란한 상황도 심각하게 인식하지 않기 때문에 스스로 대담하게 대처할 수 있다고 생각한다.",
+    "연구직처럼 한 곳에만 머물며 한 가지 일에 몰두하는 일은 따분할 것 같아 싫다.",
+    "아이디어 회의 중 모든 의견은 반드시 존중되어야 한다.",
+    "누구나 자신의 이익을 위해서라면 타인의 손해에 무관심할 수 있다고 생각한다.",
+    "내가 몸담은 조직에서 사고가 발생한다면 기꺼이 책임을 지고 물러나겠다.",
+    "스트레스를 받는 상황에 대한 대처 능력이 다소 부족하다.",
+    "교제 범위가 넓은 편이라 사람을 만나는 데 많은 시간을 들인다.",
+    "사회적 현상의 이면에 숨은 의미를 통찰하는 데 관심이 있다.",
+    "타인의 욕구를 공감하고 이해하려 노력하는 편이다.",
+    "나는 우유부단한 신중론자보다는, 파격적으로 보이더라도 융통성 있는 행동파가 낫다고 생각한다.",
+    "다소 다혈질적인 성격 때문에 화를 내는 일이 잦다.",
+    "리더로서 주도하기보다는 리더를 보좌하는 일에 능숙하다.",
+    "가치의 기준은 당연히 사람마다 조금씩 다르다고 생각한다.",
+    "타인을 전적으로 믿지 못하기 때문에 나의 본심을 감출 때가 많다.",
+    "성실함과 자긍심은 성공이라는 문을 여는 마스터키라고 생각한다.",
+    "긴장감을 잘 느끼지 않으며 비교적 차분한 편이다.",
+    "모르는 사람과도 마음이 맞으면 쉽게 마음을 터놓고 바로 친해진다.",
+    "전자책, SNS 등 새로운 정보 획득 수단을 적극 활용한다.",
+    "어떠한 경우에도 공익을 위해 자신의 권리를 희생할 수 없다고 생각한다.",
+    "수행 목표를 이루기 위해 스스로를 관리하는 기본 규칙을 설정한다.",
+    "솔직한 편이다.",
+    "나는 리드하는 것을 좋아한다.",
+    "법을 어겨서 말썽이 된 적이 한 번도 없다.",
+    "거짓말을 한 번도 한 적이 없다.",
+    "눈치가 빠르다.",
+    "일을 주도하기보다는 뒤에서 지원하는 것을 선호한다.",
+    "앞일은 알 수 없기 때문에 계획은 필요하지 않다.",
+    "거짓말도 때로는 방편이라고 생각한다.",
+    "사람이 많은 술자리를 좋아한다.",
+    "걱정지가 지나치게 많다.",
+    "일을 시작하기 전 재고하는 경향이 있다.",
+    "불의를 참지 못한다.",
+    "처음 만나는 사람과도 이야기를 잘 한다.",
+    "때로는 변화가 두렵다.",
+    "모든 사람에게 친절하다.",
+    "힘든 일이 있을 때 술은 위로가 되지 않는다.",
+    "결정을 빨리 내리지 못해 손해를 본 경험이 있다.",
+    "기회가 잡을 준비가 되어 있다.",
+    "때로는 내가 정말 쓸모없는 사람이라고 느낀다.",
+    "누군가 나를 챙겨주는 것이 좋다.",
+    "자주 가슴이 답답하다.",
+    "스스로가 자랑스럽다.",
+    "경험이 중요하다고 생각한다.",
+    "전자기기를 분해하고 다시 조립하는 것을 좋아한다.",
+    "감시받고 있다는 느낌이 든다.",
+    "난처한 상황에 놓이면 그 순간을 피하고 싶다.",
+    "세상엔 믿을 사람이 없다.",
+    "잘못을 빨리 인정하는 편이다.",
+    "지도를 보고 길을 잘 찾아간다.",
+    "귓속말을 하는 사람을 보면 날 비난하고 있는 것 같다.",
+    "막무가내라는 말을 들을 때가 있다.",
+    "장래의 일을 생각하면 불안하다.",
+    "결과보다 과정이 중요하다고 생각한다.",
+    "운동은 그다지 할 필요가 없다고 생각한다.",
+    "새로운 일을 시작할 때 좀처럼 한 발을 떼지 못한다.",
+    "조금이라도 기분이 상하면 감정을 주체하지 못한다.",
+    "업무능력은 성과로 평가받아야 한다고 생각한다.",
+    "머리가 맑지 못하고 무거운 느낌이 든다.",
+    "가끔 이상한 소리가 들린다.",
+    "주변 사람들에게 고민 상담을 잘 하지 않는 편이다."
 ]
 
-def generate_unique_question(item_id, base_sample, is_part1=True):
-    # 전 문항 100% 고유화를 달성하기 위한 고성능 프리픽스 수식 결합
-    prefixes = ["나는 보통", "업무 상황에서", "어떤 프로젝트든", "동료들과 일할 때", "조직 생활 속에서", "나의 가치관에 따라", "힘든 과제 앞에서도", "평소에 나는"]
-    p_idx = (item_id * 3) % len(prefixes)
-    part_tag = "P1" if is_part1 else "P2"
-    return f"{prefixes[p_idx]} {base_sample['text']} ({part_tag}-{item_id})"
+class AssessmentEngine:
+    def __init__(self, seed: int = 42):
+        self.seed = seed
+        self.dimensions = [
+            "계획성", "철저성/꼼꼼함", "목표 완수력/끈기", "직무 개선 의지",
+            "관계 사교성", "팀워크/이타성", "상사 존중/지시 이행", "조직 몰입도",
+            "감정 조절/분노 통제", "위기 대처력", "회복탄력성", "현실주의/실용성",
+            "변화 개방성", "도덕성/준법정신", "반사회성/공격성"
+        ]
+        self.base_samples = self._build_base_samples()
 
-@st.cache_data
-def get_master_part1():
-    data = []
-    item_id = 1
-    for set_id in range(1, 53):
-        dim_indices = []
-        base_start = (set_id * 3) % 10
-        for i in range(3):
-            d_idx = ((base_start + i) % 10) + 1
-            dim_indices.append(d_idx)
-        for i in range(3):
-            if item_id > 155: break
-            sample = BASE_SAMPLES[(base_start + i) % len(BASE_SAMPLES)]
-            np.random.seed(item_id)
-            weight = float(np.random.uniform(0.7, 1.5))
-            data.append({
-                "item_id": item_id,
-                "original_set_id": set_id,
-                "text": generate_unique_question(item_id, sample, is_part1=True),
-                "dim": sample["dim"],
-                "weight": weight
+    def _get_keyword_dimension(self, text: str, idx: int) -> str:
+        # 하드코딩 예외 매칭
+        if "정성스럽고 참된 행동" in text: return "도덕성/준법정신"
+        if "운동은 그다지 할 필요가 없다고 생각한다" in text: return "회복탄력성"
+        if "거짓말을 한 번도 한 적이 없다" in text: return "도덕성/준법정신"
+        if "거짓말도 때로는 방편" in text: return "도덕성/준법정신"
+        if "회피하려고 거짓말을 한다" in text: return "도덕성/준법정신"
+        if "이상한 소리가 들린다" in text: return "회복탄력성"
+        if "감시받고 있다는 느낌" in text: return "회복탄력성"
+        if "귓속말을 하는 사람" in text: return "회복탄력성"
+
+        # 세부 키워드 차원 분류
+        if any(kw in text for kw in ["계획", "일정", "미리", "시간을", "계획표", "목표표", "단기", "장기", "규칙적", "준비되어"]): return "계획성"
+        if any(kw in text for kw in ["꼼꼼", "세부", "청결", "정돈", "검토", "깔끔", "소지품", "장부", "정리", "실수", "세밀", "재확인"]): return "철저성/꼼꼼함"
+        if any(kw in text for kw in ["끝까지", "포기", "인내", "꾸준", "끈기", "참을성", "매달리는", "성실", "완수", "성과", "성취"]): return "목표 완수력/끈기"
+        if any(kw in text for kw in ["효율", "전문성", "학습", "호기심", "배우", "지적", "궁금", "질문", "공부", "지식", "분석"]): return "직무 개선 의지"
+        if any(kw in text for kw in ["사교", "친구", "사람들", "만나는", "모임", "외출", "어울", "인사", "교제", "소모임", "술자리", "낯선"]): return "관계 사교성"
+        if any(kw in text for kw in ["돕", "양보", "배려", "이해", "협동", "협력", "나누", "친근", "공감", "친절", "겸손", "공손", "상냥", "너그러"]): return "팀워크/이타성"
+        if any(kw in text for kw in ["상사", "권위", "부모님", "순종", "지시", "명령", "윗사람", "지휘", "복종", "선배", "예의", "예절"]): return "상사 존중/지시 이행"
+        if any(kw in text for kw in ["조직", "몰입", "회사", "동호회", "부서", "행사", "팀", "소속", "공익", "애사심", "직장"]): return "조직 몰입도"
+        if any(kw in text for kw in ["화가", "분노", "흥분", "충동", "다혈질", "주체", "변화", "수시로", "기분", "짜증", "화를", "감정"]): return "감정 조절/분노 통제"
+        if any(kw in text for kw in ["위기", "당황", "긴박", "긴급", "사태", "침착", "긴장", "놀라면", "사고", "난처", "대담", "차분"]): return "위기 대처력"
+        if any(kw in text for kw in ["상처", "회복", "침울", "슬럼프", "위축", "고민", "불안", "걱정", "열등감", "비난", "후회", "낙담", "스트레스", "우울"]): return "회복탄력성"
+        if any(kw in text for kw in ["실용", "현실", "사실", "객관", "통계", "쓸모", "이득", "이익", "계산", "현실적", "실리"]): return "현실주의/실용성"
+        if any(kw in text for kw in ["예술", "창조", "창의", "미술", "상상", "엉뚱", "개성", "참신", "아이디어", "디자인", "패션", "작품"]): return "변화 개방성"
+        if any(kw in text for kw in ["법", "규범", "준법", "정직", "도덕", "책임", "신용", "약속", "규율", "참된", "양심", "윤리", "거짓말"]): return "도덕성/준법정신"
+        if any(kw in text for kw in ["공격", "의심", "지배", "우월", "우위", "이기적", "과시", "핀잔", "경쟁", "험담", "참견", "싸우"]): return "반사회성/공격성"
+
+        return self.dimensions[idx % len(self.dimensions)]
+
+    def _is_reverse_item(self, text: str, dim: str) -> bool:
+        if dim == "반사회성/공격성":
+            return any(kw in text for kw in ["겸손", "이해심", "조화", "양보", "친절", "배려", "협력", "공손", "솔직"])
+
+        if "운동은 그다지 할 필요가 없다고 생각한다" in text: return True
+        if "거짓말을 한 번도 한 적이 없다" in text: return False
+        if "거짓말도 때로는 방편" in text: return True
+        if "회피하려고 거짓말을 한다" in text: return True
+
+        if any(kw in text for kw in ["어기지", "어긴 적", "어겨서 말썽", "손해를 보더라도", "의심하지", "조절하며", "잘 조절", "법을 어겨서 말썽이 된 적이 한 번도 없다"]): return False
+        if any(kw in text for kw in ["위축되거나 기가 죽지 않는다", "잘 느끼지 않는다", "잘 참는 편이다", "화를 내지 않는다", "화풀이를 하지 않는다", "충동적인 행동을 하지 않는다"]): return False
+        if any(kw in text for kw in ["쉽게 화해할 수 있다", "고민하지 않는다", "근심이 별로 없고", "스트레스를 잘 받지 않는다", "후회를 하면서 마음을 썩인 적이 거의 없다"]): return False
+
+        negative_keywords = [
+            "꺼려진다", "꺼린다", "귀찮", "싫어", "싫증", "싫다", "서툴", "어색", "위축", "열등감", "슬럼프", 
+            "불안", "우울", "걱정", "근심", "고민", "의심", "경계", "비난", "화를", "화가", "다혈질", "포기", 
+            "경솔", "가벼", "강박증", "조바심", "다급", "충동", "무기력", "괴로운", "비관적", "속을 썩", 
+            "감시받고", "답답", "믿지", "손해", "거짓말", "자책감", "비협조", "우유부단", "어겨도", "어기", 
+            "흐지부지", "본심을 감출", "쓸모없는", "이상한 소리", "하지 못한다", "못할 때가 많다", "공격적", 
+            "이기적", "지배", "과시", "핀잔", "소극적", "독단적", "자기중심", "비판하곤", "피곤하다", 
+            "소란", "지나치게", "힘들게", "실패하면", "실패한", "반대해도", "막무가내", "믿을 사람이 없다", 
+            "맑지 못하고", "회피하", "고통"
+        ]
+        return any(kw in text for kw in negative_keywords)
+
+    def _build_base_samples(self) -> List[Dict[str, Any]]:
+        samples = []
+        for idx, text in enumerate(ALL_360_QUESTIONS):
+            dim = self._get_keyword_dimension(text, idx)
+            is_rev = self._is_reverse_item(text, dim)
+            samples.append({
+                "text": text,
+                "dim": dim,
+                "is_reverse": is_rev
             })
-            item_id += 1
-    return data
+        return samples
 
-@st.cache_data
-def get_master_part2():
-    data = []
-    for item_id in range(1, 301):
-        sample = BASE_SAMPLES[(item_id - 1) % len(BASE_SAMPLES)]
-        np.random.seed(item_id + 500)
-        weight = float(np.random.uniform(0.8, 1.4))
-        data.append({
-            "item_id": item_id,
-            "text": generate_unique_question(item_id, sample, is_part1=False),
-            "dim": sample["dim"],
-            "weight": weight
-        })
-    return data
+    def get_part1_questions(self) -> List[Dict[str, Any]]:
+        """Part 1 강제 선택형(Triplet) 문항 구성 로직 (총 52세트 * 3개 = 156문항)"""
+        rng = random.Random(self.seed)
+        shuffled = list(self.base_samples)
+        rng.shuffle(shuffled)
 
-p1_master = get_master_part1()
-p2_master = get_master_part2()
+        part1_data = []
+        item_id = 1
+        
+        for set_id in range(1, 53):
+            selected_in_set = []
+            used_dims_in_set = set()
+            
+            while len(selected_in_set) < 3:
+                if not shuffled:
+                    shuffled = list(self.base_samples)
+                    rng.shuffle(shuffled)
+                
+                candidate = shuffled.pop(0)
+                if candidate["dim"] not in used_dims_in_set:
+                    selected_in_set.append(candidate)
+                    used_dims_in_set.add(candidate["dim"])
+                else:
+                    shuffled.append(candidate)
 
-if "p1_storage" not in st.session_state:
-    st.session_state.p1_storage = {item["item_id"]: {"near": True, "far": False} for item in p1_master}
+            for sample in selected_in_set:
+                weight = rng.uniform(0.7, 1.5)
+                part1_data.append({
+                    "item_id": item_id,
+                    "set_id": set_id,
+                    "text": sample["text"],
+                    "dim": sample["dim"],
+                    "is_reverse": sample["is_reverse"],
+                    "weight": round(weight, 4)
+                })
+                item_id += 1
+                
+        return part1_data
 
-def on_near_toggle(item_id):
-    if st.session_state[f"near_check_{item_id}"]:
-        st.session_state[f"far_check_{item_id}"] = False
-    st.session_state.p1_storage[item_id]["near"] = st.session_state[f"near_check_{item_id}"]
-    st.session_state.p1_storage[item_id]["far"] = st.session_state[f"far_check_{item_id}"]
+    def get_part2_questions(self) -> List[Dict[str, Any]]:
+        """Part 2 선형 척도형 문항 구성 로직 (총 300문항)"""
+        rng = random.Random(self.seed + 500)
+        shuffled = list(self.base_samples)
+        rng.shuffle(shuffled)
 
-def on_far_toggle(item_id):
-    if st.session_state[f"far_check_{item_id}"]:
-        st.session_state[f"near_check_{item_id}"] = False
-    st.session_state.p1_storage[item_id]["near"] = st.session_state[f"near_check_{item_id}"]
-    st.session_state.p1_storage[item_id]["far"] = st.session_state[f"far_check_{item_id}"]
+        part2_data = []
+        for item_id in range(1, 301):
+            sample = shuffled[(item_id - 1) % len(shuffled)]
+            weight = rng.uniform(0.8, 1.4)
+            part2_data.append({
+                "item_id": item_id,
+                "text": sample["text"],
+                "dim": sample["dim"],
+                "is_reverse": sample["is_reverse"],
+                "weight": round(weight, 4)
+            })
+        return part2_data
 
-if "stage" not in st.session_state: st.session_state.stage = "INTRO"
-if "p1_likert" not in st.session_state: st.session_state.p1_likert = {}
-if "p1_forced" not in st.session_state: st.session_state.p1_forced = {v_id: {"가깝다": None, "멀다": None} for v_id in range(1, 53)}
-if "p2_ans" not in st.session_state: st.session_state.p2_ans = {}
-if "p1_page" not in st.session_state: st.session_state.p1_page = 0
-if "p2_page" not in st.session_state: st.session_state.p2_page = 0
-
-if "p1_shuffled_sets" not in st.session_state:
-    shuffled_sets = []
-    chunk_size = 3
-    for i in range(0, len(p1_master), chunk_size):
-        shuffled_sets.append(p1_master[i:i+chunk_size])
-    st.session_state.p1_shuffled_sets = shuffled_sets
-
-if "p2_shuffled_items" not in st.session_state:
-    random.seed(42)
-    p2_master_shuffled = p2_master.copy()
-    random.shuffle(p2_master_shuffled)
-    st.session_state.p2_shuffled_items = p2_master_shuffled
-
-if st.session_state.stage == "INTRO":
-    st.title("🚗 현대자동차 10대 Hyundai Way 인성검사 실전 기출형 PRO")
-    st.write("---")
-    st.markdown("본 버전은 복원해주신 **현대자동차 오피셜 기출 예시 문항의 문조와 포맷을 95% 이상 완벽하게 그대로 이식**하여 설계한 파이널 모의고사입니다.\n\n### ⚙️ 시스템 동작 규격 (Real-Exam Spec)\n1. **기출 문항 싱크로율 95% 이상 보장**: 복원본 이미지 속 실제 기출 문항들의 독특한 종결형 표현 방식을 빈틈없이 구현했습니다.\n2. **455문항 전수 고유성 유지**: 전체 문항 레이스 전반에 걸쳐 고유한 수식 어구가 결합되어 중복 문항이 전혀 발생하지 않습니다.\n3. **세트 내 가치 중복 제로**: 한 세트(3문항) 내부에서 동일한 가치 지표 영역이 중복 배치되지 않도록 철저히 격리 설계되었습니다.\n4. **오류 프리 패스 내비게이션**: 불필요한 시스템 검증 락을 해제하여 끊김 없이 매끄럽게 다음 페이지로 연동됩니다.")
-    if st.button("🚀 오피셜 기출형 모의고사 시작", type="primary"):
-        st.session_state.stage = "PART1"
-        st.rerun()
-
-elif st.session_state.stage == "PART1":
-    st.header("📋 파트 1: 강제선택형 콤보 검사 (155문항 / 총 52세트)")
-    st.caption("6개 선택지 중 하나를 고르고, 우측 체크박스에서 해당 문항이 나에게 '가깝다' 또는 '멀다' 인지 고르세요. (가깝다 기본 체크 자동 세팅)")
-    shuffled_sets = st.session_state.p1_shuffled_sets
-    total_sets_count = len(shuffled_sets)
-    SETS_PER_PAGE = 5
-    max_p1_pages = int(np.ceil(total_sets_count / SETS_PER_PAGE))
-    current_p1_page = st.session_state.p1_page
-    start_set_idx = current_p1_page * SETS_PER_PAGE
-    end_set_idx = min(total_sets_count, start_set_idx + SETS_PER_PAGE)
-    st.progress(end_set_idx / total_sets_count)
-    st.write(f"**현재 페이지: {current_p1_page + 1} / {max_p1_pages}**")
-    for s_idx in range(start_set_idx, end_set_idx):
-        virtual_set_id = s_idx + 1
-        st.markdown(f"#### 📦 무작위 세트 {virtual_set_id}")
-        set_items = shuffled_sets[s_idx]
-        for item in set_items:
-            i_id = item["item_id"]
-            st.session_state[f"near_check_{i_id}"] = st.session_state.p1_storage[i_id]["near"]
-            st.session_state[f"far_check_{i_id}"] = st.session_state.p1_storage[i_id]["far"]
-            col_text, col_likert, col_near, col_far = st.columns([5, 4, 1, 1])
-            with col_text:
-                st.write(f"• {item['text']}")
-            with col_likert:
-                if f"likert_val_{i_id}" not in st.session_state:
-                    st.session_state[f"likert_val_{i_id}"] = 4
-                st.session_state[f"likert_val_{i_id}"] = st.radio(f"L1_{i_id}", [1, 2, 3, 4, 5, 6], index=st.session_state[f"likert_val_{i_id}"] - 1, horizontal=True, key=f"likert_widget_{i_id}", label_visibility="collapsed")
-            with col_near:
-                st.checkbox("가깝다", key=f"near_check_{i_id}", on_change=on_near_toggle, args=(i_id,))
-            with col_far:
-                st.checkbox("멀다", key=f"far_check_{i_id}", on_change=on_far_toggle, args=(i_id,))
-        st.write("---")
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if current_p1_page > 0:
-            if st.button("이전 페이지"):
-                st.session_state.p1_page -= 1
-                st.rerun()
-    with col_btn2:
-        if current_p1_page < max_p1_pages - 1:
-            if st.button("💾 답변 저장 후 다음 페이지"):
-                for check_idx in range(start_set_idx, end_set_idx):
-                    v_set_id = check_idx + 1
-                    items_in_set = shuffled_sets[check_idx]
-                    n_checked = [it["item_id"] for it in items_in_set if st.session_state.p1_storage[it["item_id"]]["near"]]
-                    f_checked = [it["item_id"] for it in items_in_set if st.session_state.p1_storage[it["item_id"]]["far"]]
-                    st.session_state.p1_forced[v_set_id] = {"가깝다": n_checked[0] if len(n_checked) > 0 else None, "멀다": f_checked[0] if len(f_checked) > 0 else None}
-                st.session_state.p1_page += 1
-                st.rerun()
-        else:
-            if st.button("🏁 파트 1 데이터 확정 및 파트 2 진입", type="primary"):
-                for s_flat_idx, s_flat_items in enumerate(st.session_state.p1_shuffled_sets):
-                    fid = s_flat_idx + 1
-                    n_id = next((it["item_id"] for it in s_flat_items if st.session_state.p1_storage[it["item_id"]]["near"]), None)
-                    f_id = next((it["item_id"] for it in s_flat_items if st.session_state.p1_storage[it["item_id"]]["far"]), None)
-                    st.session_state.p1_forced[fid] = {"가깝다": n_id, "멀다": f_id}
-                st.session_state.stage = "PART2"
-                st.rerun()
-
-elif st.session_state.stage == "PART2":
-    st.header("📋 파트 2: 단일 지표 무작위 셔플 검사 (300문항)")
-    st.caption("완벽하게 뒤섞인 300개의 기출 기반 문항입니다. 빠르게 체킹을 완료하세요.")
-    p2_items = st.session_state.p2_shuffled_items
-    ITEMS_PER_PAGE = 30
-    max_p2_pages = 300 // ITEMS_PER_PAGE
-    st.progress((st.session_state.p2_page + 1) * ITEMS_PER_PAGE / 300)
-    st.write(f"**현재 페이지: {st.session_state.p2_page + 1} / {max_p2_pages}**")
-    start_idx = st.session_state.p2_page * ITEMS_PER_PAGE
-    end_idx = start_idx + ITEMS_PER_PAGE
-    for idx in range(start_idx, end_idx):
-        item = p2_items[idx]
-        i_id = item["item_id"]
-        st.markdown(f"**{item['text']}**")
-        if f"p2_val_{i_id}" not in st.session_state:
-            st.session_state[f"p2_val_{i_id}"] = 3
-        st.session_state[f"p2_val_{i_id}"] = st.radio(f"L2_{i_id}", [1, 2, 3, 4, 5], index=st.session_state[f"p2_val_{i_id}"] - 1, horizontal=True, key=f"p2_widget_{i_id}", format_func=lambda x: {1:"전혀 아니다", 2:"아니다", 3:"보통이다", 4:"그렇다", 5:"매우 그렇다"}[x])
-        st.write("---")
-    col_b1, col_b2 = st.columns(2)
-    with col_b1:
-        if st.session_state.p2_page > 0:
-            if st.button("이전 페이지"):
-                st.session_state.p2_page -= 1
-                st.rerun()
-    with col_b2:
-        if st.session_state.p2_page < max_p2_pages - 1:
-            if st.button("다음 페이지"):
-                st.session_state.p2_page += 1
-                st.rerun()
-        else:
-            if st.button("📊 블랙박스 가중 연산 및 최종 리포트 출력", type="primary"):
-                st.session_state.stage = "RESULT"
-                st.rerun()
-
-else:
-    st.header("📊 블랙박스 분석 엔진 구동 결과 보고서")
-    st.write("---")
-    p2_shuffled = st.session_state.p2_shuffled_items
-    p2_df = pd.DataFrame(p2_shuffled)
-    p2_df["user_ans"] = p2_df["item_id"].map(lambda x: st.session_state.get(f"p2_val_{x}", 3))
-    p2_df["weighted_score"] = p2_df["user_ans"] * p2_df["weight"]
-    norm_params = {
-        "최고 수준의 안전과 품질": {"mu": 4.8, "sigma": 0.4},
-        "집요함": {"mu": 4.6, "sigma": 0.5},
-        "시도와 발전": {"mu": 4.2, "sigma": 0.6},
-        "민첩한 실행": {"mu": 4.1, "sigma": 0.5},
-        "협업": {"mu": 4.3, "sigma": 0.5},
-        "회복탄력성": {"mu": 4.2, "sigma": 0.6},
-        "다양성 포용": {"mu": 4.0, "sigma": 0.6},
-        "전문성": {"mu": 4.4, "sigma": 0.5},
-        "윤리준수": {"mu": 4.7, "sigma": 0.4},
-        "데이터 기반 사고": {"mu": 3.2, "sigma": 0.8},
-    }
-    dim_scores = {}
-    for dim_name in HYUNDAI_WAY.values():
-        sub = p2_df[p2_df["dim"] == dim_name]
-        if sub["weight"].sum() == 0:
-            user_raw_avg = 3.0
-        else:
-            user_raw_avg = sub["weighted_score"].sum() / sub["weight"].sum()
-        param = norm_params.get(dim_name, {"mu": 4.0, "sigma": 0.5})
-        z_score = (user_raw_avg - param["mu"]) / param["sigma"]
-        if np.isnan(z_score) or np.isinf(z_score): t_score = 50
-        else: t_score = int(50 + 15 * z_score)
-        dim_scores[dim_name] = max(10, min(99, t_score))
-    conflicts = 0
-    valid_sets = 0
-    p1_flatten = p1_master
-    for v_set_id, choice in st.session_state.p1_forced.items():
-        near_id = choice.get("가깝다")
-        far_id = choice.get("멀다")
-        if near_id and far_id:
-            valid_sets += 1
-            near_dim = next(item["dim"] for item in p1_flatten if item["item_id"] == near_id)
-            far_dim = next(item["dim"] for item in p1_flatten if item["item_id"] == far_id)
-            if dim_scores[near_dim] < dim_scores[far_dim] - 5: conflicts += 1
-    if valid_sets > 0: consistency_rate = int(max(0, 100 - (conflicts / valid_sets) * 250))
-    else: consistency_rate = 100
-    honesty_score = int(95 - (conflicts * 5))
-    r1, r2, r3 = st.columns(3)
-    with r1:
-        st.metric(label="✅ [통계 반영형] 교차 일관성 안정도", value=f"{consistency_rate}%", delta="정상 통과" if consistency_rate >= 70 else "신뢰성 임계치 미달 위험")
-    with r2:
-        st.metric(label="🔒 셔플링 검증 기준 진정성 지표", value=f"{honesty_score}%", delta="양호" if honesty_score >= 65 else "위선 반응 탐지")
-    with r3:
-        st.metric(label="⚠️ 가치 배치 논리 모순", value=f"{conflicts} 건", delta="안정권" if conflicts <= 2 else "밀착 검증 대상")
-    st.write("---")
-    st.subheader("📈 10대 Hyundai Way 상대 분포 분석 그래프")
-    benchmark_scores = {"최고 수준의 안전과 품질": 85, "집요함": 90, "시도와 발전": 85, "민첩한 실행": 85, "협업": 80, "회복탄력성": 85, "다양성 포용": 85, "전문성": 80, "윤리준수": 85, "데이터 기반 사고": 50}
-    chart_rows = []
-    for dim_name in HYUNDAI_WAY.values():
-        chart_rows.append({"Hyundai Way 핵심 가치": dim_name, "나의 변환 점수": dim_scores[dim_name], "현대차 규준 그룹 기준선": benchmark_scores.get(dim_name, 80)})
-    df_chart = pd.DataFrame(chart_rows)
-    fig = px.bar(df_chart, x="Hyundai Way 핵심 가치", y=["나의 변환 점수", "현대차 규준 그룹 기준선"])
-    fig.update_layout(barmode="group")
-    st.plotly_chart(fig, use_container_width=True)
-    st.write("---")
-    st.header("🔍 10대 Hyundai Way 다차원 성향 진단서")
-    sorted_scores = sorted(dim_scores.items(), key=lambda x: x[1], reverse=True)
-    top_3 = sorted_scores[:3]
-    bottom_3 = sorted_scores[-3:]
-    c_str, c_need = st.columns(2)
-    with c_str:
-        st.markdown("### 🌟 나의 상위 3대 핵심 강점 지표")
-        st.table(pd.DataFrame(top_3, columns=["Hyundai Way 핵심 가치", "나의 T-스코어"]))
-        st.markdown("강점 지표 해석 가이드: 위의 3가지 영역은 규준 집단(Norm Group)인 우수 합격자 대비 확고한 성향 우위를 확보한 지표입니다. 실제 현대자동차 면접장에서 구체적인 에피소드를 질문받았을 때 가장 강력하게 나를 어필할 수 있는 핵심 무기가 됩니다.")
-    with c_need:
-        st.markdown("### ⚠️ 보완이 필요한 하위 3대 열세 지표")
-        st.table(pd.DataFrame(bottom_3, columns=["Hyundai Way 핵심 가치", "나의 T-스코어"]))
-        st.markdown("열세 지표 방어 가이드: 해당 역량들은 현대차 합격 컷오프 수직선 대비 상대적으로 보완이 필요한 지표군입니다. 이 점수들이 과도하게 낮을 경우 면접관 가이드 리포트에 '검증 필요 리스크' 신호가 인쇄되어 압박 질문이 들어올 확률이 매우 높습니다.")
-    st.write("---")
-    st.markdown("### 💡 현대자동차 실전 패스를 위한 직무 맞춤형 면접 보안 전략")
-    st.info("🛠️ 엔지니어링 및 플랜트 제조 트랙 핵심 합격 가이드라인")
-    st.markdown("1. **[최고 수준의 안전과 품질] & [윤리준수] 점수 미달 시**:\n   * 대기업 제조 현장에서는 즉흥적인 번뜩임보다 정해진 공정 규정(SOP)과 안전 제어 원칙을 무한히 반복하고 사수하는 태도를 1순위로 평가합니다. 만약 이 지표가 합격선보다 낮게 탐지되었다면, 면접 시 '사소한 공정 누락이나 규칙 위반 가능성을 차단하기 위해 나만의 정밀 체크리스트나 정량적 시스템을 구축해 극복한 사례'를 중심으로 소명해야 합니다.\n2. **[집요함] & [회복탄력성] 보완 방법**:\n   * 불확실성이 높은 라인 운영 환경 특성상 돌발적인 설비 문제나 공정 에러에 직면했을 때 감정적으로 무너지지 않는 강인함이 필수적입니다. T-스코어가 불안정하게 잡힌 경우, 과거 기술적 자격증 시험이나 복잡한 프로젝트를 준비하며 겪었던 좌절 경험을 솔직하게 인정하되, 어떤 데이터 중심 루틴과 마인드셋을 가동해 끝까지 목표를 완수했는지 '행동 중심(Action)'으로 어필하세요.")
-    if st.button("🔄 새로운 무작위 배치로 다시 도전"):
-        st.session_state.clear()
-        st.rerun()
+```
